@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 
-type User = { id: string; email: string; created_at?: string }
+type User = { id: string; email: string; role?: string; created_at?: string }
 
 export default function Home() {
   const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001', [])
@@ -52,6 +52,8 @@ export default function Home() {
           <div>
             Logged in as <strong>{user.email}</strong>
           </div>
+          <Link href="/availability">My Availability</Link>
+          {user.role === 'admin' ? <Link href="/admin/users">Admin: User Management</Link> : null}
           <button
             onClick={logout}
             style={{

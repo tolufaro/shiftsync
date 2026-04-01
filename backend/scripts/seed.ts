@@ -96,6 +96,15 @@ async function main() {
       managers.push({ id: r.rows[0].id as string, email })
     }
 
+    for (const m of managers) {
+      const assigned = new Set<string>()
+      assigned.add(randomItem(insertedLocations).id)
+      if (Math.random() < 0.5) assigned.add(randomItem(insertedLocations).id)
+      for (const locId of assigned) {
+        await pool.query('insert into staff_locations (staff_id, location_id) values ($1, $2)', [m.id, locId])
+      }
+    }
+
     const staff = []
     for (let i = 1; i <= 12; i++) {
       const email = `staff${i}@shiftsync.com`

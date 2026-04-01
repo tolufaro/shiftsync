@@ -46,7 +46,7 @@ router.post('/register', async (req, res) => {
   const passwordHash = await bcrypt.hash(password, 12)
 
   const created = await pool.query(
-    'insert into users (email, password_hash) values ($1, $2) returning id, email, created_at',
+    'insert into users (email, password_hash) values ($1, $2) returning id, email, role, created_at',
     [email, passwordHash],
   )
 
@@ -63,7 +63,7 @@ router.post('/login', async (req, res) => {
   }
 
   const pool = getPool()
-  const result = await pool.query('select id, email, password_hash from users where email = $1 limit 1', [email])
+  const result = await pool.query('select id, email, role, password_hash from users where email = $1 limit 1', [email])
   const user = result.rows[0]
 
   if (!user) {
@@ -81,7 +81,7 @@ router.post('/login', async (req, res) => {
   const token = jwt.sign({ sub: user.id, email: user.email }, secret, { expiresIn: '7d' })
 
   res.cookie(TOKEN_COOKIE_NAME, token, getCookieOptions())
-  res.json({ user: { id: user.id, email: user.email } })
+  res.json({ user: { id: user.id, email: user.email, role: user.role } })
 })
 
 router.post('/logout', (req, res) => {
@@ -97,7 +97,7 @@ router.get('/me', requireAuth, async (req, res) => {
   }
 
   const pool = getPool()
-  const result = await pool.query('select id, email, created_at from users where id = $1 limit 1', [userId])
+  const result = await pool.query('select id, email, name, role, created_at from users where id = $1 limit 1', [userId])
   const user = result.rows[0]
   if (!user) {
     res.status(401).json({ error: 'unauthorized' })
@@ -108,4 +108,3 @@ router.get('/me', requireAuth, async (req, res) => {
 })
 
 module.exports = { authRouter: router }
-

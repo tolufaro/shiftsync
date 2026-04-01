@@ -9,6 +9,9 @@ const express = require('express')
 const { Server } = require('socket.io')
 const { createPool } = require('./db')
 const { authRouter } = require('./routes/auth')
+const { adminRouter } = require('./routes/admin')
+const { locationsRouter } = require('./routes/locations')
+const { availabilityRouter } = require('./routes/availability')
 
 const app = express()
 
@@ -33,6 +36,9 @@ app.get('/health', async (_req, res) => {
 })
 
 app.use('/auth', authRouter)
+app.use('/admin', adminRouter)
+app.use('/locations', locationsRouter)
+app.use('/me/availability', availabilityRouter)
 
 const server = http.createServer(app)
 
