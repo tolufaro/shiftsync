@@ -3,14 +3,17 @@ const dotenv = require('dotenv')
 dotenv.config()
 
 const http = require('http')
+const cookieParser = require('cookie-parser')
 const cors = require('cors')
 const express = require('express')
 const { Server } = require('socket.io')
 const { createPool } = require('./db')
+const { authRouter } = require('./routes/auth')
 
 const app = express()
 
-app.use(cors({ origin: process.env.CORS_ORIGIN || true }))
+app.use(cors({ origin: process.env.CORS_ORIGIN || true, credentials: true }))
+app.use(cookieParser())
 app.use(express.json())
 
 const pool = createPool()
@@ -29,11 +32,14 @@ app.get('/health', async (_req, res) => {
   }
 })
 
+app.use('/auth', authRouter)
+
 const server = http.createServer(app)
 
 const io = new Server(server, {
   cors: {
     origin: process.env.CORS_ORIGIN || true,
+    credentials: true,
   },
 })
 

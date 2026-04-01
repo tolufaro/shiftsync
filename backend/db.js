@@ -11,4 +11,12 @@ function createPool() {
   })
 }
 
-module.exports = { createPool }
+function getPool() {
+  const pool = createPool()
+  if (!pool) {
+    throw new Error('DATABASE_URL is required')
+  }
+  return pool
+}
+
+module.exports = { createPool, getPool }
