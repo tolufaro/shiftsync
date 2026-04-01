@@ -46,6 +46,60 @@ async function ensureManagerLocationAccess(pool, userId, locationId) {
   return exists.rows.length > 0
 }
 
+async function cancelPendingSwapsForShift(pool, shiftId, actorUserId) {
+  const pending = await pool.query(
+    `
+      select sr.id, sr.requested_by, sr.target_staff_id
+      from swap_requests sr
+      join shift_assignments sa on sa.id = sr.assignment_id
+      where sa.shift_id = $1
+        and sr.status in ('pending'::swap_request_status, 'pending_manager_approval'::swap_request_status)
+    `,
+    [shiftId],
+  )
+
+  if (!pending.rows.length) return 0
+
+  await pool.query('begin')
+  try {
+    const ids = pending.rows.map((r) => r.id)
+    await pool.query('update swap_requests set status = $1::swap_request_status where id = any($2::uuid[])', [
+      'cancelled',
+      ids,
+    ])
+
+    for (const r of pending.rows) {
+      await pool.query(
+        'insert into audit_logs (user_id, action, entity_type, entity_id, before, after) values ($1,$2,$3,$4,$5,$6)',
+        [actorUserId, 'swap.cancel.shift_edit', 'swap_request', r.id, JSON.stringify({}), JSON.stringify({ status: 'cancelled' })],
+      )
+
+      await pool.query('insert into notifications (user_id, type, message, metadata) values ($1,$2,$3,$4)', [
+        r.requested_by,
+        'swap',
+        'Swap/drop request cancelled due to shift update',
+        JSON.stringify({ shiftId, swapRequestId: r.id }),
+      ])
+
+      if (r.target_staff_id) {
+        await pool.query('insert into notifications (user_id, type, message, metadata) values ($1,$2,$3,$4)', [
+          r.target_staff_id,
+          'swap',
+          'Swap request cancelled due to shift update',
+          JSON.stringify({ shiftId, swapRequestId: r.id }),
+        ])
+      }
+    }
+
+    await pool.query('commit')
+  } catch (e) {
+    await pool.query('rollback')
+    throw e
+  }
+
+  return pending.rows.length
+}
+
 router.get('/', async (req, res) => {
   const pool = getPool()
 
@@ -457,6 +511,8 @@ router.patch('/:shiftId', async (req, res) => {
     )
   }
 
+  await cancelPendingSwapsForShift(pool, shiftId, req.user.id)
+
   const result = await pool.query(
     `
       select
@@ -704,6 +760,7 @@ router.post('/:shiftId/assign', async (req, res) => {
   }
 
   await pool.query('begin')
+  let assignmentId = null
   try {
     const created = await pool.query(
       `
@@ -713,6 +770,7 @@ router.post('/:shiftId/assign', async (req, res) => {
       `,
       [shiftId, staffId, req.user.id, 'active'],
     )
+    assignmentId = created.rows[0].id
 
     await pool.query(
       'insert into audit_logs (user_id, action, entity_type, entity_id, before, after) values ($1,$2,$3,$4,$5,$6)',
@@ -732,7 +790,7 @@ router.post('/:shiftId/assign', async (req, res) => {
     throw e
   }
 
-  res.status(201).json({ ok: true })
+  res.status(201).json({ ok: true, assignmentId })
 })
 
 module.exports = { shiftsRouter: router }

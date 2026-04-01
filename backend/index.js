@@ -14,6 +14,8 @@ const { locationsRouter } = require('./routes/locations')
 const { availabilityRouter } = require('./routes/availability')
 const { shiftsRouter } = require('./routes/shifts')
 const { scheduleRouter } = require('./routes/schedule')
+const { swapsRouter } = require('./routes/swaps')
+const { myShiftsRouter } = require('./routes/myShifts')
 
 const app = express()
 
@@ -43,6 +45,8 @@ app.use('/locations', locationsRouter)
 app.use('/me/availability', availabilityRouter)
 app.use('/shifts', shiftsRouter)
 app.use('/schedule', scheduleRouter)
+app.use('/swaps', swapsRouter)
+app.use('/me/shifts', myShiftsRouter)
 
 const server = http.createServer(app)
 

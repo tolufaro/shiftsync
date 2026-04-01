@@ -9,6 +9,8 @@ function normalizeTimeStr(value) {
 
 async function validateAssignment(staffId, shiftId, options = {}) {
   const pool = options.pool || getPool()
+  const excludeShiftIds = Array.isArray(options.excludeShiftIds) ? options.excludeShiftIds : []
+  const excluded = Array.from(new Set([shiftId, ...excludeShiftIds]))
 
   const shiftResult = await pool.query(
     `
@@ -41,10 +43,10 @@ async function validateAssignment(staffId, shiftId, options = {}) {
         from shift_assignments sa
         join shifts s2 on s2.id = sa.shift_id
         where sa.staff_id = $1
-          and sa.shift_id <> $2
+          and not (sa.shift_id = any($2::uuid[]))
           and sa.status <> 'dropped'::shift_assignment_status
       `,
-      [staffId, shiftId],
+      [staffId, excluded],
     ),
     pool.query(
       `
@@ -101,4 +103,3 @@ async function validateAssignment(staffId, shiftId, options = {}) {
 }
 
 module.exports = { validateAssignment }
-
