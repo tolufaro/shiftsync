@@ -10,6 +10,19 @@ services:
     volumes:
       - shiftsync_db:/var/lib/postgresql/data
 
+  pgadmin:
+    image: dpage/pgadmin4:8
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@shiftsync.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_LISTEN_PORT: 80
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    volumes:
+      - shiftsync_pgadmin:/var/lib/pgadmin
+
 volumes:
   shiftsync_db:
-
+  shiftsync_pgadmin:
