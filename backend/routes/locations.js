@@ -39,5 +39,23 @@ router.get('/:locationId', requireRole(['admin', 'manager']), requireLocationAcc
   res.json({ location })
 })
 
-module.exports = { locationsRouter: router }
+router.get('/:locationId/staff', requireRole(['admin', 'manager']), requireLocationAccess(), async (req, res) => {
+  const pool = getPool()
+  const locationId = req.params.locationId
 
+  const result = await pool.query(
+    `
+      select u.id, u.email, u.name, u.role
+      from users u
+      join staff_locations sl on sl.staff_id = u.id
+      where sl.location_id = $1
+        and u.role = 'staff'::user_role
+      order by u.name nulls last, u.email
+    `,
+    [locationId],
+  )
+
+  res.json({ staff: result.rows })
+})
+
+module.exports = { locationsRouter: router }

@@ -12,6 +12,8 @@ const { authRouter } = require('./routes/auth')
 const { adminRouter } = require('./routes/admin')
 const { locationsRouter } = require('./routes/locations')
 const { availabilityRouter } = require('./routes/availability')
+const { shiftsRouter } = require('./routes/shifts')
+const { scheduleRouter } = require('./routes/schedule')
 
 const app = express()
 
@@ -39,6 +41,8 @@ app.use('/auth', authRouter)
 app.use('/admin', adminRouter)
 app.use('/locations', locationsRouter)
 app.use('/me/availability', availabilityRouter)
+app.use('/shifts', shiftsRouter)
+app.use('/schedule', scheduleRouter)
 
 const server = http.createServer(app)
 

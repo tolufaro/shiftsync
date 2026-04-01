@@ -7,7 +7,8 @@
     "db:migrate": "node scripts/migrate.js",
     "db:seed": "ts-node scripts/seed.ts",
     "dev": "nodemon index.js",
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test"
   },
   "keywords": [],
   "author": "",

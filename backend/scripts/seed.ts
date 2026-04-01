@@ -173,14 +173,62 @@ async function main() {
         const reqSkill = randomItem(insertedSkills).id
         const headcount = 1 + Math.floor(Math.random() * 3)
         const morning = await pool.query(
-          'insert into shifts (location_id, required_skill_id, date, start_time, end_time, headcount_needed, status) values ($1,$2,$3,$4,$5,$6,$7) returning id',
-          [loc.id, reqSkill, date, '08:00', '16:00', headcount, 'published'],
+          `
+            insert into shifts (
+              location_id,
+              required_skill_id,
+              start_at,
+              end_at,
+              date,
+              start_time,
+              end_time,
+              headcount_needed,
+              status
+            )
+            values (
+              $1,
+              $2,
+              (($3::date + $4::time) at time zone $7),
+              (($3::date + $5::time) at time zone $7),
+              $3::date,
+              $4::time,
+              $5::time,
+              $6,
+              $8
+            )
+            returning id
+          `,
+          [loc.id, reqSkill, date, '08:00', '16:00', headcount, loc.timezone, 'published'],
         )
         shiftIds.push(morning.rows[0].id as string)
 
         const evening = await pool.query(
-          'insert into shifts (location_id, required_skill_id, date, start_time, end_time, headcount_needed, status) values ($1,$2,$3,$4,$5,$6,$7) returning id',
-          [loc.id, reqSkill, date, '16:00', '23:00', 1, 'published'],
+          `
+            insert into shifts (
+              location_id,
+              required_skill_id,
+              start_at,
+              end_at,
+              date,
+              start_time,
+              end_time,
+              headcount_needed,
+              status
+            )
+            values (
+              $1,
+              $2,
+              (($3::date + $4::time) at time zone $7),
+              (($3::date + $5::time) at time zone $7),
+              $3::date,
+              $4::time,
+              $5::time,
+              $6,
+              $8
+            )
+            returning id
+          `,
+          [loc.id, reqSkill, date, '16:00', '23:00', 1, loc.timezone, 'published'],
         )
         shiftIds.push(evening.rows[0].id as string)
       }
