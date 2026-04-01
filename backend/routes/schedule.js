@@ -164,5 +164,56 @@ router.get('/me', ...requireUser(), async (req, res) => {
   })
 })
 
-module.exports = { scheduleRouter: router }
+router.get('/on-duty', ...requireRole(['admin', 'manager']), async (req, res) => {
+  const pool = getPool()
+  const locationId = String(req.query?.locationId || '').trim()
+  if (!locationId) {
+    res.status(400).json({ error: 'locationId_required' })
+    return
+  }
 
+  if (req.user.role === 'manager') {
+    const ok = await ensureManagerLocationAccess(pool, req.user.id, locationId)
+    if (!ok) {
+      res.status(403).json({ error: 'forbidden' })
+      return
+    }
+  }
+
+  const result = await pool.query(
+    `
+      select
+        u.id as staff_id,
+        u.email,
+        u.name,
+        s.id as shift_id,
+        s.start_at,
+        s.end_at
+      from shift_assignments sa
+      join shifts s on s.id = sa.shift_id
+      join users u on u.id = sa.staff_id
+      where s.location_id = $1
+        and s.status = 'published'::shift_status
+        and sa.status <> 'dropped'::shift_assignment_status
+        and now() >= s.start_at
+        and now() < s.end_at
+      order by s.start_at asc
+    `,
+    [locationId],
+  )
+
+  res.json({
+    locationId,
+    now: new Date().toISOString(),
+    staff: result.rows.map((r) => ({
+      staffId: r.staff_id,
+      email: r.email,
+      name: r.name,
+      shiftId: r.shift_id,
+      startAt: new Date(r.start_at).toISOString(),
+      endAt: new Date(r.end_at).toISOString(),
+    })),
+  })
+})
+
+module.exports = { scheduleRouter: router }

@@ -16,6 +16,9 @@ const { shiftsRouter } = require('./routes/shifts')
 const { scheduleRouter } = require('./routes/schedule')
 const { swapsRouter } = require('./routes/swaps')
 const { myShiftsRouter } = require('./routes/myShifts')
+const { analyticsRouter } = require('./routes/analytics')
+const { setupRealtime } = require('./realtime/setup')
+const { createEmitter } = require('./realtime/emit')
 
 const app = express()
 
@@ -47,6 +50,7 @@ app.use('/shifts', shiftsRouter)
 app.use('/schedule', scheduleRouter)
 app.use('/swaps', swapsRouter)
 app.use('/me/shifts', myShiftsRouter)
+app.use('/analytics', analyticsRouter)
 
 const server = http.createServer(app)
 
@@ -62,6 +66,10 @@ io.on('connection', (socket) => {
     socket.emit('pong')
   })
 })
+
+setupRealtime(io, { pool })
+app.locals.io = io
+app.locals.realtime = createEmitter(io)
 
 const port = process.env.PORT ? Number(process.env.PORT) : 3001
 

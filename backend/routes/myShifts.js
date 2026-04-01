@@ -97,7 +97,7 @@ router.post('/:shiftId/claim', async (req, res) => {
   const staffId = req.user.id
   const shiftId = req.params.shiftId
 
-  const shiftResult = await pool.query('select id, start_at, headcount_needed, status from shifts where id = $1 limit 1', [shiftId])
+  const shiftResult = await pool.query('select id, location_id, start_at, headcount_needed, status from shifts where id = $1 limit 1', [shiftId])
   const shift = shiftResult.rows[0]
   if (!shift) {
     res.status(404).json({ error: 'not_found' })
@@ -170,6 +170,9 @@ router.post('/:shiftId/claim', async (req, res) => {
     await pool.query('rollback')
     throw e
   }
+
+  req.app.locals.realtime?.emitToLocation(shift.location_id, 'schedule:updated', { locationId: shift.location_id, shiftId, reason: 'shift.claim' })
+  req.app.locals.realtime?.emitToUser(staffId, 'assignment:new', { shiftId, assignmentId })
 
   res.status(201).json({ ok: true, assignmentId })
 })

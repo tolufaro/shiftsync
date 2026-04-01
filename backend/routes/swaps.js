@@ -71,7 +71,7 @@ router.post('/drop', ...requireRole(['staff']), async (req, res) => {
 
   const assignmentResult = await pool.query(
     `
-      select sa.id, sa.shift_id, sa.staff_id, sa.status, s.start_at
+      select sa.id, sa.shift_id, sa.staff_id, sa.status, s.start_at, s.location_id
       from shift_assignments sa
       join shifts s on s.id = sa.shift_id
       where sa.id = $1
@@ -123,7 +123,10 @@ router.post('/drop', ...requireRole(['staff']), async (req, res) => {
     )
 
     await pool.query('commit')
-    res.status(201).json({ swap: created.rows[0] })
+    const swap = created.rows[0]
+    req.app.locals.realtime?.emitToLocation(assignment.location_id, 'swap:new', { swapId: swap.id, type: swap.type, shiftId: assignment.shift_id })
+    req.app.locals.realtime?.emitToUser(staffId, 'swap:submitted', { swapId: swap.id, type: swap.type })
+    res.status(201).json({ swap })
   } catch (e) {
     await pool.query('rollback')
     throw e
@@ -258,7 +261,11 @@ router.post('/request', ...requireRole(['staff']), async (req, res) => {
     )
 
     await pool.query('commit')
-    res.status(201).json({ swap: created.rows[0] })
+    const swap = created.rows[0]
+    req.app.locals.realtime?.emitToUser(targetStaffId, 'swap:new', { swapId: swap.id, type: swap.type, fromStaffId: staffA })
+    req.app.locals.realtime?.emitToUser(staffA, 'swap:submitted', { swapId: swap.id, type: swap.type })
+    req.app.locals.realtime?.emitToLocation(assignmentA.location_id, 'swap:new', { swapId: swap.id, type: swap.type, shiftId: assignmentA.shift_id })
+    res.status(201).json({ swap })
   } catch (e) {
     await pool.query('rollback')
     throw e
@@ -278,9 +285,12 @@ router.patch('/:swapId/respond', ...requireRole(['staff']), async (req, res) => 
 
   const swapResult = await pool.query(
     `
-      select id, type, status, requested_by, target_staff_id, expires_at, assignment_id, target_assignment_id
-      from swap_requests
-      where id = $1
+      select sr.id, sr.type, sr.status, sr.requested_by, sr.target_staff_id, sr.expires_at, sr.assignment_id, sr.target_assignment_id,
+             sa.shift_id, s.location_id
+      from swap_requests sr
+      join shift_assignments sa on sa.id = sr.assignment_id
+      join shifts s on s.id = sa.shift_id
+      where sr.id = $1
       limit 1
     `,
     [swapId],
@@ -342,6 +352,12 @@ router.patch('/:swapId/respond', ...requireRole(['staff']), async (req, res) => 
     await pool.query('rollback')
     throw e
   }
+
+  req.app.locals.realtime?.emitToUser(swap.requested_by, response === 'accept' ? 'swap:accepted' : 'swap:declined', {
+    swapId,
+    status: nextStatus,
+  })
+  req.app.locals.realtime?.emitToLocation(swap.location_id, 'swap:updated', { swapId, status: nextStatus, shiftId: swap.shift_id })
 
   res.json({ ok: true, status: nextStatus })
 })
@@ -495,6 +511,12 @@ router.patch('/:swapId/approve', ...requireRole(['admin', 'manager']), async (re
       throw e
     }
 
+    req.app.locals.realtime?.emitToUser(swap.requested_by, 'swap:denied', { swapId, status: 'rejected' })
+    if (swap.target_staff_id) {
+      req.app.locals.realtime?.emitToUser(swap.target_staff_id, 'swap:denied', { swapId, status: 'rejected' })
+    }
+    req.app.locals.realtime?.emitToLocation(swap.location_id, 'swap:updated', { swapId, status: 'rejected', shiftId: swap.shift_a_id })
+
     res.json({ ok: true, status: 'rejected' })
     return
   }
@@ -600,6 +622,13 @@ router.patch('/:swapId/approve', ...requireRole(['admin', 'manager']), async (re
     throw e
   }
 
+  req.app.locals.realtime?.emitToUser(swap.requested_by, 'swap:approved', { swapId, status: 'approved' })
+  if (swap.target_staff_id) {
+    req.app.locals.realtime?.emitToUser(swap.target_staff_id, 'swap:approved', { swapId, status: 'approved' })
+  }
+  req.app.locals.realtime?.emitToLocation(swap.location_id, 'swap:updated', { swapId, status: 'approved', shiftId: swap.shift_a_id })
+  req.app.locals.realtime?.emitToLocation(swap.location_id, 'schedule:updated', { locationId: swap.location_id, shiftId: swap.shift_a_id, reason: 'swap.approved' })
+
   res.json({ ok: true, status: 'approved' })
 })
 
@@ -645,4 +674,3 @@ router.get('/me', ...requireUser(), async (req, res) => {
 })
 
 module.exports = { swapsRouter: router }
-

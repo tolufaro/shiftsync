@@ -4,6 +4,7 @@ const { getPool } = require('../db')
 const { requireRole } = require('../middleware/rbac')
 const { findValidAlternatives } = require('../services/findValidAlternatives')
 const { validateAssignment } = require('../services/validateAssignment')
+const { assignStaffToShift } = require('../services/assignShift')
 
 const router = express.Router()
 
@@ -46,7 +47,7 @@ async function ensureManagerLocationAccess(pool, userId, locationId) {
   return exists.rows.length > 0
 }
 
-async function cancelPendingSwapsForShift(pool, shiftId, actorUserId) {
+async function cancelPendingSwapsForShift(pool, shiftId, actorUserId, locationId, realtime) {
   const pending = await pool.query(
     `
       select sr.id, sr.requested_by, sr.target_staff_id
@@ -95,6 +96,14 @@ async function cancelPendingSwapsForShift(pool, shiftId, actorUserId) {
   } catch (e) {
     await pool.query('rollback')
     throw e
+  }
+
+  if (realtime && locationId) {
+    for (const r of pending.rows) {
+      realtime.emitToUser(r.requested_by, 'swap:cancelled', { swapId: r.id, shiftId })
+      if (r.target_staff_id) realtime.emitToUser(r.target_staff_id, 'swap:cancelled', { swapId: r.id, shiftId })
+    }
+    realtime.emitToLocation(locationId, 'swap:updated', { shiftId, status: 'cancelled' })
   }
 
   return pending.rows.length
@@ -154,6 +163,7 @@ router.get('/', async (req, res) => {
         sk.name as required_skill_name,
         s.start_at,
         s.end_at,
+        s.is_premium,
         s.headcount_needed,
         s.status,
         s.created_at,
@@ -177,6 +187,7 @@ router.get('/', async (req, res) => {
       requiredSkill: r.required_skill_id ? { id: r.required_skill_id, name: r.required_skill_name } : null,
       startAt: new Date(r.start_at).toISOString(),
       endAt: new Date(r.end_at).toISOString(),
+      isPremium: Boolean(r.is_premium),
       headcountNeeded: r.headcount_needed,
       status: r.status,
       createdAt: r.created_at,
@@ -200,6 +211,7 @@ router.get('/:shiftId', async (req, res) => {
         sk.name as required_skill_name,
         s.start_at,
         s.end_at,
+        s.is_premium,
         s.headcount_needed,
         s.status,
         s.created_at,
@@ -236,6 +248,7 @@ router.get('/:shiftId', async (req, res) => {
       requiredSkill: r.required_skill_id ? { id: r.required_skill_id, name: r.required_skill_name } : null,
       startAt: new Date(r.start_at).toISOString(),
       endAt: new Date(r.end_at).toISOString(),
+      isPremium: Boolean(r.is_premium),
       headcountNeeded: r.headcount_needed,
       status: r.status,
       createdAt: r.created_at,
@@ -293,6 +306,7 @@ router.post('/', async (req, res) => {
         date,
         start_time,
         end_time,
+        is_premium,
         headcount_needed,
         status
       )
@@ -304,6 +318,10 @@ router.post('/', async (req, res) => {
         (($3::timestamptz at time zone l.timezone)::date),
         (($3::timestamptz at time zone l.timezone)::time),
         (($4::timestamptz at time zone l.timezone)::time),
+        (
+          extract(dow from ($3::timestamptz at time zone l.timezone)) in (5, 6)
+          and ($3::timestamptz at time zone l.timezone)::time >= time '17:00'
+        ),
         $5::int,
         $6::shift_status
       from locations l
@@ -330,6 +348,7 @@ router.post('/', async (req, res) => {
         sk.name as required_skill_name,
         s.start_at,
         s.end_at,
+        s.is_premium,
         s.headcount_needed,
         s.status,
         s.created_at,
@@ -344,6 +363,8 @@ router.post('/', async (req, res) => {
   )
   const r = result.rows[0]
 
+  req.app.locals.realtime?.emitToLocation(r.location_id, 'schedule:updated', { locationId: r.location_id, shiftId: r.id, reason: 'shift.created' })
+
   res.status(201).json({
     shift: {
       id: r.id,
@@ -353,6 +374,7 @@ router.post('/', async (req, res) => {
       requiredSkill: r.required_skill_id ? { id: r.required_skill_id, name: r.required_skill_name } : null,
       startAt: new Date(r.start_at).toISOString(),
       endAt: new Date(r.end_at).toISOString(),
+      isPremium: Boolean(r.is_premium),
       headcountNeeded: r.headcount_needed,
       status: r.status,
       createdAt: r.created_at,
@@ -454,6 +476,13 @@ router.patch('/:shiftId', async (req, res) => {
                s.start_at, s.end_at, s.headcount_needed, s.status, s.created_at, s.updated_at
         from shifts s
         join locations l on l.id = s.location_id
+        s.is_premium,
+        left join skills sk on sk.id = s.required_skill_id
+        where s.id = $1
+        limit 1
+      `,
+      [shiftId],
+        join locations l on l.id = s.location_id
         left join skills sk on sk.id = s.required_skill_id
         where s.id = $1
         limit 1
@@ -503,6 +532,10 @@ router.patch('/:shiftId', async (req, res) => {
           date = ((s.start_at at time zone l.timezone)::date),
           start_time = ((s.start_at at time zone l.timezone)::time),
           end_time = ((s.end_at at time zone l.timezone)::time),
+          is_premium = (
+            extract(dow from (s.start_at at time zone l.timezone)) in (5, 6)
+            and (s.start_at at time zone l.timezone)::time >= time '17:00'
+          ),
           updated_at = now()
         from locations l
         where s.id = $1 and l.id = s.location_id
@@ -511,7 +544,7 @@ router.patch('/:shiftId', async (req, res) => {
     )
   }
 
-  await cancelPendingSwapsForShift(pool, shiftId, req.user.id)
+  await cancelPendingSwapsForShift(pool, shiftId, req.user.id, nextLocationId || current.location_id, req.app.locals.realtime)
 
   const result = await pool.query(
     `
@@ -524,6 +557,7 @@ router.patch('/:shiftId', async (req, res) => {
         sk.name as required_skill_name,
         s.start_at,
         s.end_at,
+        s.is_premium,
         s.headcount_needed,
         s.status,
         s.created_at,
@@ -538,6 +572,8 @@ router.patch('/:shiftId', async (req, res) => {
   )
   const r = result.rows[0]
 
+  req.app.locals.realtime?.emitToLocation(r.location_id, 'schedule:updated', { locationId: r.location_id, shiftId: r.id, reason: 'shift.updated' })
+
   res.json({
     shift: {
       id: r.id,
@@ -547,6 +583,7 @@ router.patch('/:shiftId', async (req, res) => {
       requiredSkill: r.required_skill_id ? { id: r.required_skill_id, name: r.required_skill_name } : null,
       startAt: new Date(r.start_at).toISOString(),
       endAt: new Date(r.end_at).toISOString(),
+      isPremium: Boolean(r.is_premium),
       headcountNeeded: r.headcount_needed,
       status: r.status,
       createdAt: r.created_at,
@@ -574,7 +611,9 @@ router.delete('/:shiftId', async (req, res) => {
     }
   }
 
+  await cancelPendingSwapsForShift(pool, shiftId, req.user.id, current.location_id, req.app.locals.realtime)
   await pool.query('delete from shifts where id = $1', [shiftId])
+  req.app.locals.realtime?.emitToLocation(current.location_id, 'schedule:updated', { locationId: current.location_id, shiftId, reason: 'shift.deleted' })
   res.json({ ok: true })
 })
 
@@ -637,6 +676,7 @@ router.patch('/:shiftId/status', async (req, res) => {
         sk.name as required_skill_name,
         s.start_at,
         s.end_at,
+        s.is_premium,
         s.headcount_needed,
         s.status,
         s.created_at,
@@ -651,6 +691,8 @@ router.patch('/:shiftId/status', async (req, res) => {
   )
   const r = result.rows[0]
 
+  req.app.locals.realtime?.emitToLocation(r.location_id, 'schedule:updated', { locationId: r.location_id, shiftId: r.id, reason: 'shift.status' })
+
   res.json({
     shift: {
       id: r.id,
@@ -660,6 +702,7 @@ router.patch('/:shiftId/status', async (req, res) => {
       requiredSkill: r.required_skill_id ? { id: r.required_skill_id, name: r.required_skill_name } : null,
       startAt: new Date(r.start_at).toISOString(),
       endAt: new Date(r.end_at).toISOString(),
+      isPremium: Boolean(r.is_premium),
       headcountNeeded: r.headcount_needed,
       status: r.status,
       createdAt: r.created_at,
@@ -692,10 +735,45 @@ router.get('/:shiftId/alternatives', async (req, res) => {
   res.json({ alternatives })
 })
 
+router.get('/:shiftId/preview', async (req, res) => {
+  const pool = getPool()
+  const shiftId = req.params.shiftId
+  const staffId = cleanString(req.query?.staffId)
+
+  if (!staffId) {
+    res.status(400).json({ error: 'staffId_required' })
+    return
+  }
+
+  const shiftResult = await pool.query('select id, location_id from shifts where id = $1 limit 1', [shiftId])
+  const shift = shiftResult.rows[0]
+  if (!shift) {
+    res.status(404).json({ error: 'not_found' })
+    return
+  }
+
+  if (req.user.role === 'manager') {
+    const ok = await ensureManagerLocationAccess(pool, req.user.id, shift.location_id)
+    if (!ok) {
+      res.status(403).json({ error: 'forbidden' })
+      return
+    }
+  }
+
+  const validation = await validateAssignment(staffId, shiftId, { pool })
+  res.json({
+    valid: validation.valid,
+    violations: validation.violations,
+    suggestions: validation.suggestions,
+    overtime: validation.overtime || null,
+  })
+})
+
 router.post('/:shiftId/assign', async (req, res) => {
   const pool = getPool()
   const shiftId = req.params.shiftId
   const staffId = cleanString(req.body?.staffId)
+  const overrideReason = cleanString(req.body?.overrideReason)
 
   if (!staffId) {
     res.status(400).json({ error: 'staffId_required' })
@@ -725,72 +803,38 @@ router.post('/:shiftId/assign', async (req, res) => {
     return
   }
 
-  const existingAssignment = await pool.query(
-    `
-      select id
-      from shift_assignments
-      where shift_id = $1 and staff_id = $2 and status <> 'dropped'::shift_assignment_status
-      limit 1
-    `,
-    [shiftId, staffId],
+  const result = await assignStaffToShift(
+    { shiftId, staffId, actorUserId: req.user.id, overrideReason },
+    { pool },
   )
-  if (existingAssignment.rows.length) {
-    res.status(409).json({ error: 'already_assigned' })
+
+  if (!result.ok) {
+    if (result.error === 'headcount_full') {
+      req.app.locals.realtime?.emitToUser(req.user.id, 'assignment:conflict', { shiftId, reason: 'headcount_full' })
+      res.status(409).json({ error: 'headcount_full' })
+      return
+    }
+    if (result.error === 'already_assigned') {
+      res.status(409).json({ error: 'already_assigned' })
+      return
+    }
+    if (result.error === 'constraint_violation') {
+      const alternatives = await findValidAlternatives(shiftId, { pool, limit: 8 })
+      res.status(400).json({ error: 'constraint_violation', validation: result.validation, alternatives })
+      return
+    }
+    if (result.error === 'not_found') {
+      res.status(404).json({ error: 'not_found' })
+      return
+    }
+    res.status(400).json({ error: result.error })
     return
   }
 
-  const count = await pool.query(
-    `
-      select count(*)::int as c
-      from shift_assignments
-      where shift_id = $1 and status <> 'dropped'::shift_assignment_status
-    `,
-    [shiftId],
-  )
-  if (count.rows[0].c >= shift.headcount_needed) {
-    res.status(409).json({ error: 'headcount_full' })
-    return
-  }
+  req.app.locals.realtime?.emitToLocation(result.locationId, 'schedule:updated', { locationId: result.locationId, shiftId })
+  req.app.locals.realtime?.emitToUser(staffId, 'assignment:new', { shiftId, assignmentId: result.assignmentId })
 
-  const validation = await validateAssignment(staffId, shiftId, { pool })
-  if (!validation.valid) {
-    const alternatives = await findValidAlternatives(shiftId, { pool, limit: 8 })
-    res.status(400).json({ error: 'constraint_violation', validation, alternatives })
-    return
-  }
-
-  await pool.query('begin')
-  let assignmentId = null
-  try {
-    const created = await pool.query(
-      `
-        insert into shift_assignments (shift_id, staff_id, assigned_by, status)
-        values ($1, $2, $3, $4::shift_assignment_status)
-        returning id
-      `,
-      [shiftId, staffId, req.user.id, 'active'],
-    )
-    assignmentId = created.rows[0].id
-
-    await pool.query(
-      'insert into audit_logs (user_id, action, entity_type, entity_id, before, after) values ($1,$2,$3,$4,$5,$6)',
-      [
-        req.user.id,
-        'shift.assign',
-        'shift',
-        shiftId,
-        JSON.stringify({}),
-        JSON.stringify({ assignmentId: created.rows[0].id, staffId }),
-      ],
-    )
-
-    await pool.query('commit')
-  } catch (e) {
-    await pool.query('rollback')
-    throw e
-  }
-
-  res.status(201).json({ ok: true, assignmentId })
+  res.status(201).json({ ok: true, assignmentId: result.assignmentId, warnings: result.warnings, overtime: result.overtime })
 })
 
 module.exports = { shiftsRouter: router }

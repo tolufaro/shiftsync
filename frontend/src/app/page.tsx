@@ -57,6 +57,7 @@ export default function Home() {
           <Link href="/available-shifts">Available Shifts</Link>
           {user.role === 'admin' || user.role === 'manager' ? <Link href="/manager/schedule">Manager Schedule</Link> : null}
           {user.role === 'admin' || user.role === 'manager' ? <Link href="/manager/approvals">Manager Approvals</Link> : null}
+          {user.role === 'admin' || user.role === 'manager' ? <Link href="/manager/analytics">Fairness Analytics</Link> : null}
           {user.role === 'admin' ? <Link href="/admin/users">Admin: User Management</Link> : null}
           <button
             onClick={logout}

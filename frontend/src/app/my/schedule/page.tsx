@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { getSocket } from '../../../lib/socket'
+
 type ShiftRow = {
   id: string
   assignmentId: string
@@ -74,6 +76,19 @@ export default function MySchedulePage() {
     load()
   }, [load])
 
+  useEffect(() => {
+    const socket = getSocket(apiUrl)
+    function onScheduleUpdated() {
+      load()
+    }
+    socket.on('schedule:updated', onScheduleUpdated)
+    socket.on('assignment:new', onScheduleUpdated)
+    return () => {
+      socket.off('schedule:updated', onScheduleUpdated)
+      socket.off('assignment:new', onScheduleUpdated)
+    }
+  }, [apiUrl, load])
+
   return (
     <div style={{ maxWidth: 900, margin: '40px auto', padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
@@ -127,4 +142,3 @@ export default function MySchedulePage() {
     </div>
   )
 }
-

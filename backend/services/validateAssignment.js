@@ -34,9 +34,9 @@ async function validateAssignment(staffId, shiftId, options = {}) {
     return { valid: false, violations: [{ code: 'shift_not_found', shiftId }], suggestions: [] }
   }
 
-  const [skills, locations, assignedShifts, windows, exceptions] = await Promise.all([
-    pool.query('select skill_id from staff_skills where staff_id = $1', [staffId]),
-    pool.query('select location_id from staff_locations where staff_id = $1', [staffId]),
+  const querySkills = () => pool.query('select skill_id from staff_skills where staff_id = $1', [staffId])
+  const queryLocations = () => pool.query('select location_id from staff_locations where staff_id = $1', [staffId])
+  const queryAssigned = () =>
     pool.query(
       `
         select s2.id as shift_id, s2.start_at, s2.end_at
@@ -47,7 +47,8 @@ async function validateAssignment(staffId, shiftId, options = {}) {
           and sa.status <> 'dropped'::shift_assignment_status
       `,
       [staffId, excluded],
-    ),
+    )
+  const queryWindows = () =>
     pool.query(
       `
         select day_of_week, to_char(start_time, 'HH24:MI') as start_time, to_char(end_time, 'HH24:MI') as end_time, is_recurring
@@ -56,7 +57,8 @@ async function validateAssignment(staffId, shiftId, options = {}) {
         order by day_of_week asc, start_time asc
       `,
       [staffId],
-    ),
+    )
+  const queryExceptions = () =>
     pool.query(
       `
         select date::text as date, type, to_char(start_time, 'HH24:MI') as start_time, to_char(end_time, 'HH24:MI') as end_time
@@ -65,8 +67,12 @@ async function validateAssignment(staffId, shiftId, options = {}) {
         order by date asc
       `,
       [staffId],
-    ),
-  ])
+    )
+
+  const isClient = typeof pool.release === 'function'
+  const [skills, locations, assignedShifts, windows, exceptions] = isClient
+    ? [await querySkills(), await queryLocations(), await queryAssigned(), await queryWindows(), await queryExceptions()]
+    : await Promise.all([querySkills(), queryLocations(), queryAssigned(), queryWindows(), queryExceptions()])
 
   return validateAssignmentCore({
     staffId,

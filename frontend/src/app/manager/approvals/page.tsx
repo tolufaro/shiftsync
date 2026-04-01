@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { getSocket } from '../../../lib/socket'
+
 type Location = { id: string; name: string; timezone: string }
 
 type SwapRow = {
@@ -70,6 +72,23 @@ export default function ManagerApprovalsPage() {
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    const socket = getSocket(apiUrl)
+    function onSwapNew() {
+      load()
+    }
+    socket.on('swap:new', onSwapNew)
+    socket.on('swap:updated', onSwapNew)
+    socket.on('swap:approved', onSwapNew)
+    socket.on('swap:denied', onSwapNew)
+    return () => {
+      socket.off('swap:new', onSwapNew)
+      socket.off('swap:updated', onSwapNew)
+      socket.off('swap:approved', onSwapNew)
+      socket.off('swap:denied', onSwapNew)
+    }
+  }, [apiUrl, load])
 
   async function decide(swapId: string, decision: 'approve' | 'deny') {
     setActioning((p) => ({ ...p, [swapId]: true }))
@@ -188,4 +207,3 @@ export default function ManagerApprovalsPage() {
     </div>
   )
 }
-

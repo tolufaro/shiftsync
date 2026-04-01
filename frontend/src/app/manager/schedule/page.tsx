@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { getSocket } from '../../../lib/socket'
+
 type UserRole = 'admin' | 'manager' | 'staff'
 type Me = { id: string; email: string; role: UserRole }
 
@@ -22,11 +24,19 @@ type Shift = {
 
 type StaffRow = { id: string; email: string; name: string | null; role: string }
 
-type AssignmentValidation = { valid: boolean; violations: { code: string }[]; suggestions?: unknown[] }
+type ValidationViolation = { code: string; severity?: 'warning' | 'block'; message?: string; overrideable?: boolean }
+type AssignmentValidation = { valid: boolean; violations: ValidationViolation[]; suggestions?: unknown[]; overtime?: unknown }
 type AlternativeStaff = { id: string; email: string; name: string | null }
 type AssignFeedback =
   | { ok: true }
   | { ok: false; message: string; validation?: AssignmentValidation; alternatives?: AlternativeStaff[] }
+
+type OvertimePreview = { weeklyHoursBefore: number; weeklyHoursAfter: number; [key: string]: unknown }
+type PreviewResponse = { valid: boolean; violations: ValidationViolation[]; suggestions: unknown[]; overtime: OvertimePreview | null }
+
+type OnDutyRow = { staffId: string; email: string; name: string | null; shiftId: string; startAt: string; endAt: string }
+type ScheduleUpdatedPayload = { locationId?: string; shiftId?: string; reason?: string }
+type SwapUpdatedPayload = { locationId?: string; shiftId?: string; status?: string }
 
 function toYmd(date: Date) {
   return date.toISOString().slice(0, 10)
@@ -80,6 +90,12 @@ export default function ManagerSchedulePage() {
 
   const [assignSelection, setAssignSelection] = useState<Record<string, string>>({})
   const [assignFeedback, setAssignFeedback] = useState<Record<string, AssignFeedback>>({})
+  const [previewByShiftId, setPreviewByShiftId] = useState<Record<string, { staffId: string; data: PreviewResponse }>>({})
+  const [overrideOpen, setOverrideOpen] = useState<{ shiftId: string; staffId: string } | null>(null)
+  const [overrideReason, setOverrideReason] = useState('')
+  const [overrideSubmitting, setOverrideSubmitting] = useState(false)
+
+  const [onDuty, setOnDuty] = useState<OnDutyRow[]>([])
 
   const fetchJson = useCallback(
     async <T,>(path: string, init?: RequestInit) => {
@@ -134,6 +150,14 @@ export default function ManagerSchedulePage() {
     }
   }, [fetchJson, locationId, weekStart])
 
+  const loadOnDuty = useCallback(async () => {
+    if (!locationId) return
+    try {
+      const data = await fetchJson<{ staff: OnDutyRow[] }>(`/schedule/on-duty?locationId=${encodeURIComponent(locationId)}`)
+      setOnDuty(data.staff)
+    } catch {}
+  }, [fetchJson, locationId])
+
   const loadStaff = useCallback(async () => {
     if (!locationId) return
     setStaffLoading(true)
@@ -160,6 +184,42 @@ export default function ManagerSchedulePage() {
     loadStaff()
   }, [loadStaff])
 
+  useEffect(() => {
+    loadOnDuty()
+    const t = setInterval(() => {
+      loadOnDuty()
+    }, 60000)
+    return () => clearInterval(t)
+  }, [loadOnDuty])
+
+  useEffect(() => {
+    const socket = getSocket(apiUrl)
+    function onScheduleUpdated(payload: ScheduleUpdatedPayload) {
+      const loc = payload?.locationId
+      if (!loc || loc !== locationId) return
+      loadSchedule()
+      loadOnDuty()
+    }
+    function onSwapUpdated(payload: SwapUpdatedPayload) {
+      const loc = payload?.locationId
+      if (loc && loc === locationId) {
+        loadOnDuty()
+      }
+    }
+    function onAssignmentConflict() {
+      setError('Assignment conflict detected. Refreshing schedule.')
+      loadSchedule()
+    }
+    socket.on('schedule:updated', onScheduleUpdated)
+    socket.on('swap:updated', onSwapUpdated)
+    socket.on('assignment:conflict', onAssignmentConflict)
+    return () => {
+      socket.off('schedule:updated', onScheduleUpdated)
+      socket.off('swap:updated', onSwapUpdated)
+      socket.off('assignment:conflict', onAssignmentConflict)
+    }
+  }, [apiUrl, locationId, loadSchedule, loadOnDuty])
+
   const days = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => addDaysYmd(weekStart, i))
   }, [weekStart])
@@ -175,6 +235,36 @@ export default function ManagerSchedulePage() {
     }
     return map
   }, [shifts, location?.timezone])
+
+  const hoursByStaff = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const st of staff) map.set(st.id, 0)
+    for (const s of shifts) {
+      const hours = (new Date(s.endAt).getTime() - new Date(s.startAt).getTime()) / 3600000
+      for (const a of s.assignments) {
+        if (a.status !== 'active') continue
+        map.set(a.staffId, (map.get(a.staffId) || 0) + hours)
+      }
+    }
+    return map
+  }, [shifts, staff])
+
+  const maxHours = useMemo(() => {
+    let max = 0
+    for (const v of hoursByStaff.values()) if (v > max) max = v
+    return Math.max(40, max)
+  }, [hoursByStaff])
+
+  const loadPreview = useCallback(
+    async (shiftId: string, staffId: string) => {
+      if (!staffId) return
+      try {
+        const data = await fetchJson<PreviewResponse>(`/shifts/${shiftId}/preview?staffId=${encodeURIComponent(staffId)}`)
+        setPreviewByShiftId((prev) => ({ ...prev, [shiftId]: { staffId, data } }))
+      } catch {}
+    },
+    [fetchJson],
+  )
 
   async function toggleStatus(shift: Shift) {
     setError(null)
@@ -209,10 +299,48 @@ export default function ManagerSchedulePage() {
     }
 
     const message = data?.error ? String(data.error) : `Assign failed (${res.status})`
-    setAssignFeedback((prev) => ({
-      ...prev,
-      [shiftId]: { ok: false, message, validation: data?.validation, alternatives: data?.alternatives },
-    }))
+    const validation = data?.validation as AssignmentValidation | undefined
+    const alternatives = data?.alternatives as AlternativeStaff[] | undefined
+
+    if (data?.error === 'constraint_violation' && validation?.violations?.length) {
+      const blocks = validation.violations.filter((v) => v.severity === 'block')
+      const canOverride = blocks.length > 0 && blocks.every((v) => v.overrideable)
+      if (canOverride) {
+        setOverrideOpen({ shiftId, staffId })
+        setOverrideReason('')
+        setAssignFeedback((prev) => ({ ...prev, [shiftId]: { ok: false, message, validation, alternatives } }))
+        return
+      }
+    }
+
+    setAssignFeedback((prev) => ({ ...prev, [shiftId]: { ok: false, message, validation, alternatives } }))
+  }
+
+  async function submitOverride() {
+    if (!overrideOpen) return
+    if (!overrideReason.trim()) return
+    const { shiftId, staffId } = overrideOpen
+    setOverrideSubmitting(true)
+    setError(null)
+    try {
+      const res = await fetch(`${apiUrl}/shifts/${shiftId}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ staffId, overrideReason: overrideReason.trim() }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        const message = data?.error ? String(data.error) : `Assign failed (${res.status})`
+        setAssignFeedback((prev) => ({ ...prev, [shiftId]: { ok: false, message, validation: data?.validation, alternatives: data?.alternatives } }))
+        return
+      }
+      setOverrideOpen(null)
+      setAssignFeedback((prev) => ({ ...prev, [shiftId]: { ok: true } }))
+      await loadSchedule()
+    } finally {
+      setOverrideSubmitting(false)
+    }
   }
 
   return (
@@ -271,7 +399,49 @@ export default function ManagerSchedulePage() {
       {loading ? <div style={{ marginTop: 12 }}>Loading...</div> : null}
 
       {!loading && location ? (
-        <div style={{ marginTop: 16, border: '1px solid #e5e5e5', borderRadius: 12, overflow: 'hidden' }}>
+        <div style={{ marginTop: 16, display: 'grid', gap: 16 }}>
+          <div style={{ padding: 12, border: '1px solid #e5e5e5', borderRadius: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
+              <h2 style={{ margin: 0 }}>On Duty Now</h2>
+              <button
+                onClick={loadOnDuty}
+                style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #111', background: '#fff', cursor: 'pointer' }}
+              >
+                Refresh
+              </button>
+            </div>
+            <div style={{ marginTop: 10, display: 'grid', gap: 6 }}>
+              {onDuty.map((r) => (
+                <div key={r.staffId} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                  <div style={{ color: '#222' }}>{r.name || r.email}</div>
+                  <div style={{ color: '#555' }}>{formatTimeRange(r.startAt, r.endAt, location.timezone)}</div>
+                </div>
+              ))}
+              {onDuty.length === 0 ? <div style={{ color: '#777' }}>No one currently on duty.</div> : null}
+            </div>
+          </div>
+
+          <div style={{ padding: 12, border: '1px solid #e5e5e5', borderRadius: 12 }}>
+            <h2 style={{ margin: '0 0 10px 0' }}>Projected Weekly Hours</h2>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {staff.map((st) => {
+                const hours = hoursByStaff.get(st.id) || 0
+                const pct = Math.min(100, (hours / maxHours) * 100)
+                const color = hours >= 60 ? '#b00020' : hours >= 40 ? '#d07a00' : hours >= 38 ? '#b38900' : '#0b6b2b'
+                return (
+                  <div key={st.id} style={{ display: 'grid', gridTemplateColumns: '260px 1fr 60px', gap: 10, alignItems: 'center' }}>
+                    <div style={{ color: '#222' }}>{st.name ? `${st.name} (${st.email})` : st.email}</div>
+                    <div style={{ height: 10, background: '#eee', borderRadius: 999, overflow: 'hidden' }}>
+                      <div style={{ width: `${pct}%`, height: '100%', background: color }} />
+                    </div>
+                    <div style={{ textAlign: 'right', color: '#333' }}>{hours.toFixed(1)}h</div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <div style={{ border: '1px solid #e5e5e5', borderRadius: 12, overflow: 'hidden' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', borderBottom: '1px solid #eee' }}>
             {days.map((ymd) => (
               <div key={ymd} style={{ padding: 10, fontWeight: 600, background: '#fafafa' }}>
@@ -342,7 +512,12 @@ export default function ManagerSchedulePage() {
                         <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
                           <select
                             value={assignSelection[s.id] || ''}
-                            onChange={(e) => setAssignSelection((prev) => ({ ...prev, [s.id]: e.target.value }))}
+                            onChange={(e) => {
+                              const nextStaffId = e.target.value
+                              setAssignSelection((prev) => ({ ...prev, [s.id]: nextStaffId }))
+                              setAssignFeedback((prev) => ({ ...prev, [s.id]: prev[s.id] }))
+                              if (nextStaffId) loadPreview(s.id, nextStaffId)
+                            }}
                             style={{ padding: 8, borderRadius: 8, border: '1px solid #ccc' }}
                           >
                             <option value="">Assign staff...</option>
@@ -367,6 +542,35 @@ export default function ManagerSchedulePage() {
                           </button>
                         </div>
 
+                        {previewByShiftId[s.id] && previewByShiftId[s.id].staffId === (assignSelection[s.id] || '') ? (
+                          <div style={{ marginTop: 10, padding: 10, borderRadius: 10, border: '1px solid #eee', background: '#fafafa' }}>
+                            {previewByShiftId[s.id].data.overtime ? (
+                              <div style={{ color: '#333' }}>
+                                Weekly: {Number(previewByShiftId[s.id].data.overtime.weeklyHoursBefore).toFixed(1)}h →{' '}
+                                {Number(previewByShiftId[s.id].data.overtime.weeklyHoursAfter).toFixed(1)}h
+                              </div>
+                            ) : (
+                              <div style={{ color: '#555' }}>Preview unavailable</div>
+                            )}
+                            {previewByShiftId[s.id].data.violations?.some((v) => v.severity === 'warning') ? (
+                              <div style={{ marginTop: 4, color: '#b38900' }}>
+                                {previewByShiftId[s.id].data.violations
+                                  .filter((v) => v.severity === 'warning' && v.message)
+                                  .map((v) => v.message)
+                                  .join(' · ') || 'Near overtime'}
+                              </div>
+                            ) : null}
+                            {previewByShiftId[s.id].data.violations?.some((v) => v.severity === 'block') ? (
+                              <div style={{ marginTop: 4, color: '#b00020' }}>
+                                {previewByShiftId[s.id].data.violations
+                                  .filter((v) => v.severity === 'block' && v.message)
+                                  .map((v) => v.message)
+                                  .join(' · ') || 'Blocked'}
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+
                         {fb ? (
                           <div style={{ marginTop: 10 }}>
                             {fb.ok ? <div style={{ color: '#0b6b2b' }}>Assigned</div> : null}
@@ -390,6 +594,55 @@ export default function ManagerSchedulePage() {
                 </div>
               )
             })}
+          </div>
+          </div>
+        </div>
+      ) : null}
+
+      {overrideOpen ? (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.4)',
+            display: 'grid',
+            placeItems: 'center',
+            padding: 16,
+            zIndex: 50,
+          }}
+        >
+          <div style={{ width: '100%', maxWidth: 560, background: '#fff', borderRadius: 12, padding: 16 }}>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>Override Required (7th day)</div>
+            <div style={{ marginTop: 6, color: '#555' }}>Provide a reason to approve this assignment.</div>
+            <textarea
+              value={overrideReason}
+              onChange={(e) => setOverrideReason(e.target.value)}
+              rows={4}
+              style={{ marginTop: 12, width: '100%', padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
+            />
+            <div style={{ marginTop: 12, display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setOverrideOpen(null)}
+                disabled={overrideSubmitting}
+                style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #111', background: '#fff', cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitOverride}
+                disabled={overrideSubmitting || !overrideReason.trim()}
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  border: '1px solid #111',
+                  background: '#111',
+                  color: '#fff',
+                  cursor: 'pointer',
+                }}
+              >
+                {overrideSubmitting ? 'Submitting...' : 'Confirm Override'}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
