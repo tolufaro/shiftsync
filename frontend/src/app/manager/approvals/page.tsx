@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { getSocket } from '../../../lib/socket'
+import { formatDayLabel, formatTimeRange } from '../../../lib/time'
 
 type Location = { id: string; name: string; timezone: string }
 
@@ -16,16 +17,6 @@ type SwapRow = {
   requestedBy: { id: string; email: string; name: string | null }
   targetStaff: { id: string; email: string; name: string | null } | null
   shift: { id: string; startAt: string; endAt: string; location: { id: string; name: string; timezone: string } }
-}
-
-function formatTimeRange(startAt: string, endAt: string, timeZone: string) {
-  const fmt = new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', minute: '2-digit' })
-  return `${fmt.format(new Date(startAt))}–${fmt.format(new Date(endAt))}`
-}
-
-function formatDate(startAt: string, timeZone: string) {
-  const fmt = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short', month: 'short', day: 'numeric' })
-  return fmt.format(new Date(startAt))
 }
 
 export default function ManagerApprovalsPage() {
@@ -154,7 +145,7 @@ export default function ManagerApprovalsPage() {
 
               <div style={{ marginTop: 6, color: '#333' }}>
                 <div>
-                  {formatDate(s.shift.startAt, s.shift.location.timezone)} —{' '}
+                  {formatDayLabel(s.shift.startAt, s.shift.location.timezone)} —{' '}
                   {formatTimeRange(s.shift.startAt, s.shift.endAt, s.shift.location.timezone)}{' '}
                   <span style={{ color: '#666' }}>({s.shift.location.timezone})</span>
                 </div>

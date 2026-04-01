@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { getSocket } from '../../../lib/socket'
+import { formatDayLabel, formatTimeRange } from '../../../lib/time'
 
 type ShiftRow = {
   id: string
@@ -27,16 +28,6 @@ function startOfWeekMonday(date: Date) {
   d.setUTCDate(d.getUTCDate() - diff)
   d.setUTCHours(0, 0, 0, 0)
   return d
-}
-
-function formatTimeRange(startAt: string, endAt: string, timeZone: string) {
-  const fmt = new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', minute: '2-digit' })
-  return `${fmt.format(new Date(startAt))}–${fmt.format(new Date(endAt))}`
-}
-
-function formatDate(startAt: string, timeZone: string) {
-  const fmt = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short', month: 'short', day: 'numeric' })
-  return fmt.format(new Date(startAt))
 }
 
 export default function MySchedulePage() {
@@ -123,7 +114,7 @@ export default function MySchedulePage() {
           {shifts.map((s) => (
             <div key={s.assignmentId} style={{ padding: 12, border: '1px solid #e5e5e5', borderRadius: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                <div style={{ fontWeight: 700 }}>{formatDate(s.startAt, s.location.timezone)}</div>
+                <div style={{ fontWeight: 700 }}>{formatDayLabel(s.startAt, s.location.timezone)}</div>
                 <div style={{ color: s.status === 'published' ? '#0b6b2b' : '#555' }}>{s.status}</div>
               </div>
               <div style={{ marginTop: 6 }}>

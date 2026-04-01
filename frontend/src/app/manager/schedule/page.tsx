@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { getSocket } from '../../../lib/socket'
+import { formatDayLabel, formatTimeRange, localYmd } from '../../../lib/time'
 
 type UserRole = 'admin' | 'manager' | 'staff'
 type Me = { id: string; email: string; role: UserRole }
@@ -59,16 +60,6 @@ function startOfWeekMonday(date: Date) {
   d.setUTCDate(d.getUTCDate() - diff)
   d.setUTCHours(0, 0, 0, 0)
   return d
-}
-
-function formatTimeRange(startAt: string, endAt: string, timeZone: string) {
-  const fmt = new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', minute: '2-digit' })
-  return `${fmt.format(new Date(startAt))}–${fmt.format(new Date(endAt))}`
-}
-
-function formatDayLabel(date: Date, timeZone: string) {
-  const fmt = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short', month: 'short', day: 'numeric' })
-  return fmt.format(date)
 }
 
 export default function ManagerSchedulePage() {
@@ -227,9 +218,8 @@ export default function ManagerSchedulePage() {
   const shiftsByDay = useMemo(() => {
     const map: Record<string, Shift[]> = {}
     const tz = location?.timezone || 'UTC'
-    const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' })
     for (const s of shifts) {
-      const k = fmt.format(new Date(s.startAt))
+      const k = localYmd(s.startAt, tz)
       map[k] = map[k] || []
       map[k].push(s)
     }

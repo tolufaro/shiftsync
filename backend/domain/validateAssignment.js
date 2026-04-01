@@ -1,3 +1,5 @@
+const { DateTime, Interval } = require('luxon')
+
 const TEN_HOURS_MS = 10 * 60 * 60 * 1000
 const WEEKLY_HOURS_WARNING = 38
 const WEEKLY_HOURS_OVERTIME = 40
@@ -33,47 +35,6 @@ function dayIndexUtcFromYmd(ymd) {
   return Math.floor(Date.UTC(p.y, p.mo - 1, p.d) / 86400000)
 }
 
-function ymdFromParts(parts) {
-  const y = parts.year
-  const m = parts.month
-  const d = parts.day
-  if (!y || !m || !d) return null
-  return `${y}-${m}-${d}`
-}
-
-function localInfo(date, timeZone) {
-  const fmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    hour12: false,
-    weekday: 'short',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-
-  const parts = fmt.formatToParts(date)
-  const map = {}
-  for (const p of parts) {
-    map[p.type] = p.value
-  }
-
-  const ymd = ymdFromParts(map)
-  if (!ymd) return null
-
-  const weekdayShort = map.weekday
-  const hour = Number(map.hour)
-  const minute = Number(map.minute)
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null
-
-  const weekdayMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }
-  const dayOfWeek = weekdayMap[weekdayShort]
-  if (dayOfWeek === undefined) return null
-
-  return { ymd, dayOfWeek, minutes: hour * 60 + minute }
-}
-
 function toMinutes(time) {
   if (!time || typeof time !== 'string') return null
   const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(time)
@@ -81,94 +42,111 @@ function toMinutes(time) {
   return Number(m[1]) * 60 + Number(m[2])
 }
 
-function getSegmentsForShift(shiftStartAt, shiftEndAt, timeZone) {
-  const startInfo = localInfo(shiftStartAt, timeZone)
-  const endInfo = localInfo(new Date(shiftEndAt.getTime() - 1), timeZone)
-  if (!startInfo || !endInfo) return null
-
-  const startDayIndex = dayIndexUtcFromYmd(startInfo.ymd)
-  const endDayIndex = dayIndexUtcFromYmd(endInfo.ymd)
-  if (startDayIndex === null || endDayIndex === null) return null
-
-  const segments = []
-  for (let di = startDayIndex; di <= endDayIndex; di++) {
-    const p = parseYmd(di === startDayIndex ? startInfo.ymd : endInfo.ymd)
-    if (!p) return null
-  }
-
-  if (endDayIndex - startDayIndex > 7) return null
-
-  const dayCount = endDayIndex - startDayIndex
-  for (let offset = 0; offset <= dayCount; offset++) {
-    const ymd = addDaysYmd(startInfo.ymd, offset)
-    if (!ymd) return null
-    const dayStart = offset === 0 ? startInfo.minutes : 0
-    const dayEnd = offset === dayCount ? endInfo.minutes + 1 : 1440
-    const info = localInfo(new Date(shiftStartAt.getTime() + offset * 86400000), timeZone)
-    const dayOfWeek = info ? info.dayOfWeek : null
-    segments.push({ ymd, dayOfWeek, startMin: dayStart, endMin: dayEnd })
-  }
-
-  return segments
+function parseTimeParts(time) {
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(time || ''))
+  if (!m) return null
+  return { hour: Number(m[1]), minute: Number(m[2]) }
 }
 
-function windowsForDate(ymd, dayOfWeek, recurringWindows, exceptions) {
+function dateTimeAtLocalMinute(ymd, minutes, timeZone) {
+  const p = parseYmd(ymd)
+  if (!p) return null
+  const base = DateTime.fromObject({ year: p.y, month: p.mo, day: p.d, hour: 0, minute: 0, second: 0 }, { zone: timeZone })
+  if (!base.isValid) return null
+  return base.plus({ minutes })
+}
+
+function intervalForWindow(ymd, startTime, endTime, timeZone) {
+  const sMin = toMinutes(startTime)
+  const eMin = toMinutes(endTime)
+  if (sMin === null || eMin === null) return null
+  const start = dateTimeAtLocalMinute(ymd, sMin, timeZone)
+  const endBase = dateTimeAtLocalMinute(ymd, eMin, timeZone)
+  if (!start || !endBase || !start.isValid || !endBase.isValid) return null
+  const end = endBase <= start ? endBase.plus({ days: 1 }) : endBase
+  return Interval.fromDateTimes(start, end)
+}
+
+function mergeIntervals(intervals) {
+  const sorted = intervals
+    .filter((i) => i && i.isValid)
+    .sort((a, b) => a.start.toMillis() - b.start.toMillis())
+  const out = []
+  for (const i of sorted) {
+    const last = out[out.length - 1]
+    if (!last) {
+      out.push(i)
+      continue
+    }
+    if (last.end.toMillis() >= i.start.toMillis()) {
+      out[out.length - 1] = Interval.fromDateTimes(last.start, last.end.toMillis() >= i.end.toMillis() ? last.end : i.end)
+    } else {
+      out.push(i)
+    }
+  }
+  return out
+}
+
+function windowsForDateIntervals(ymd, dayOfWeek, recurringWindows, exceptions, timeZone) {
   const dateExceptions = exceptions.filter((e) => e.date === ymd)
   const unavail = dateExceptions.some((e) => e.type === 'unavailable')
   if (unavail) return []
 
   const custom = dateExceptions.filter((e) => e.type === 'custom')
-  if (custom.length) {
-    return custom
-      .map((e) => {
-        const s = toMinutes(e.startTime)
-        const en = toMinutes(e.endTime)
-        if (s === null || en === null) return null
-        return { startMin: s, endMin: en }
-      })
-      .filter(Boolean)
+  const baseWindows = custom.length ? custom : recurringWindows.filter((w) => w.dayOfWeek === dayOfWeek)
+
+  const intervals = []
+  for (const w of baseWindows) {
+    const it = intervalForWindow(ymd, w.startTime, w.endTime, timeZone)
+    if (it) intervals.push(it)
   }
 
-  return recurringWindows
-    .filter((w) => w.dayOfWeek === dayOfWeek)
-    .map((w) => {
-      const s = toMinutes(w.startTime)
-      const en = toMinutes(w.endTime)
-      if (s === null || en === null) return null
-      return { startMin: s, endMin: en }
-    })
-    .filter(Boolean)
-}
-
-function isSegmentCovered(segment, windows) {
-  for (const w of windows) {
-    if (segment.startMin >= w.startMin && segment.endMin <= w.endMin) return true
-  }
-  return false
-}
-
-function minutesForYmdFromSegments(segments, ymd) {
-  let minutes = 0
-  for (const seg of segments) {
-    if (seg.ymd !== ymd) continue
-    minutes += Math.max(0, seg.endMin - seg.startMin)
-  }
-  return minutes
-}
-
-function workedDatesFromAssignedShifts(assignedShifts, timeZone) {
-  const set = new Set()
-  for (const s of assignedShifts) {
-    const aStart = new Date(s.startAt)
-    const aEnd = new Date(s.endAt)
-    if (Number.isNaN(aStart.getTime()) || Number.isNaN(aEnd.getTime())) continue
-    const segments = getSegmentsForShift(aStart, aEnd, timeZone)
-    if (!segments) continue
-    for (const seg of segments) {
-      if (seg.endMin > seg.startMin) set.add(seg.ymd)
+  const prevYmd = addDaysYmd(ymd, -1)
+  if (prevYmd) {
+    const prevExceptions = exceptions.filter((e) => e.date === prevYmd)
+    const prevUnavail = prevExceptions.some((e) => e.type === 'unavailable')
+    const prevCustom = prevExceptions.filter((e) => e.type === 'custom')
+    const prevWindows = prevCustom.length ? prevCustom : recurringWindows.filter((w) => w.dayOfWeek === ((dayOfWeek + 6) % 7))
+    if (!prevUnavail) {
+      for (const w of prevWindows) {
+        const sMin = toMinutes(w.startTime)
+        const eMin = toMinutes(w.endTime)
+        if (sMin === null || eMin === null) continue
+        if (eMin > sMin) continue
+        const it = intervalForWindow(prevYmd, w.startTime, w.endTime, timeZone)
+        if (it) intervals.push(it)
+      }
     }
   }
-  return set
+
+  return mergeIntervals(intervals)
+}
+
+function splitIntervalByLocalDay(startIso, endIso, timeZone) {
+  const start = DateTime.fromISO(startIso, { zone: timeZone })
+  const end = DateTime.fromISO(endIso, { zone: timeZone })
+  if (!start.isValid || !end.isValid) return null
+  if (!(end.toMillis() > start.toMillis())) return null
+
+  const segments = []
+  let cursor = start.startOf('day')
+  for (let guard = 0; guard < 16 && cursor.toMillis() < end.toMillis(); guard++) {
+    const next = cursor.plus({ days: 1 })
+    const segStart = start.toMillis() > cursor.toMillis() ? start : cursor
+    const segEnd = end.toMillis() < next.toMillis() ? end : next
+    const ms = Math.max(0, segEnd.toMillis() - segStart.toMillis())
+    if (ms > 0) {
+      segments.push({
+        ymd: cursor.toISODate(),
+        dayOfWeek: cursor.weekday % 7,
+        start: segStart,
+        end: segEnd,
+        ms,
+      })
+    }
+    cursor = next
+  }
+  return segments
 }
 
 function consecutiveDaysEndingOn(workedDates, endYmd) {
@@ -245,196 +223,200 @@ function validateAssignmentCore(input) {
     }
   }
 
-  const timeZone = input.shift.locationTimeZone
+  const locationTimeZone = input.shift.locationTimeZone
+  const staffTimeZone = input.staffTimeZone || locationTimeZone || 'UTC'
+
   let shiftSegments = null
   let overtime = null
-  if (!timeZone) {
+
+  if (!locationTimeZone) {
     violations.push({ code: 'missing_location_timezone', severity: 'block' })
+  }
+
+  shiftSegments = splitIntervalByLocalDay(input.shift.startAt, input.shift.endAt, staffTimeZone)
+  if (!shiftSegments) {
+    violations.push({ code: 'availability_check_failed', severity: 'block' })
   } else {
-    shiftSegments = getSegmentsForShift(shiftStart, shiftEnd, timeZone)
-    if (!shiftSegments) {
-      violations.push({ code: 'availability_check_failed', severity: 'block' })
-    } else {
-      const recurring = input.availability?.windows || []
-      const exceptions = input.availability?.exceptions || []
+    const recurring = input.availability?.windows || []
+    const exceptions = input.availability?.exceptions || []
 
-      const uncovered = []
-      for (const seg of shiftSegments) {
-        if (seg.dayOfWeek === null || seg.dayOfWeek === undefined) {
-          uncovered.push({ date: seg.ymd })
-          continue
-        }
-        const wins = windowsForDate(seg.ymd, seg.dayOfWeek, recurring, exceptions)
-        if (!isSegmentCovered(seg, wins)) {
-          uncovered.push({ date: seg.ymd, dayOfWeek: seg.dayOfWeek, startTime: seg.startMin, endTime: seg.endMin })
-        }
-      }
-
-      if (uncovered.length) {
-        violations.push({ code: 'outside_availability', severity: 'block', uncovered })
-        suggestions.push({ code: 'update_availability' })
+    const uncovered = []
+    for (const seg of shiftSegments) {
+      const wins = windowsForDateIntervals(seg.ymd, seg.dayOfWeek, recurring, exceptions, staffTimeZone)
+      const segInterval = Interval.fromDateTimes(seg.start, seg.end)
+      const ok = wins.some((w) => w.start.toMillis() <= segInterval.start.toMillis() && w.end.toMillis() >= segInterval.end.toMillis())
+      if (!ok) {
+        uncovered.push({
+          date: seg.ymd,
+          dayOfWeek: seg.dayOfWeek,
+          startTime: seg.start.toFormat('HH:mm'),
+          endTime: seg.end.toFormat('HH:mm'),
+          timeZone: staffTimeZone,
+        })
       }
     }
 
-    if (shiftSegments) {
-      const startInfo = localInfo(shiftStart, timeZone)
-      const shiftStartYmd = startInfo?.ymd
-      const shiftStartDow = startInfo?.dayOfWeek
+    if (uncovered.length) {
+      violations.push({ code: 'outside_availability', severity: 'block', uncovered })
+      suggestions.push({ code: 'update_availability' })
+    }
 
-      if (shiftStartYmd && shiftStartDow !== null && shiftStartDow !== undefined) {
-        const diffToMonday = (shiftStartDow + 6) % 7
-        const weekStartYmd = addDaysYmd(shiftStartYmd, -diffToMonday)
-        const weekYmds = []
-        for (let i = 0; i < 7; i++) {
-          const ymd = addDaysYmd(weekStartYmd, i)
-          if (ymd) weekYmds.push(ymd)
+    const shiftStartLocal = DateTime.fromISO(input.shift.startAt, { zone: staffTimeZone })
+    if (shiftStartLocal.isValid) {
+      const weekStart = shiftStartLocal.startOf('day').minus({ days: shiftStartLocal.weekday - 1 })
+      const weekStartYmd = weekStart.toISODate()
+      const weekYmds = []
+      for (let i = 0; i < 7; i++) {
+        const ymd = addDaysYmd(weekStartYmd, i)
+        if (ymd) weekYmds.push(ymd)
+      }
+
+      const dailyMsBefore = new Map()
+      for (const s of assigned) {
+        const parts = splitIntervalByLocalDay(s.startAt, s.endAt, staffTimeZone)
+        if (!parts) continue
+        for (const p of parts) {
+          dailyMsBefore.set(p.ymd, (dailyMsBefore.get(p.ymd) || 0) + p.ms)
         }
-        const weekSet = new Set(weekYmds)
+      }
 
-        let weeklyMinutesBefore = 0
-        for (const s of assigned) {
-          const aStart = new Date(s.startAt)
-          const aEnd = new Date(s.endAt)
-          if (Number.isNaN(aStart.getTime()) || Number.isNaN(aEnd.getTime())) continue
-          const segs = getSegmentsForShift(aStart, aEnd, timeZone)
-          if (!segs) continue
-          for (const ymd of weekYmds) weeklyMinutesBefore += minutesForYmdFromSegments(segs, ymd)
-        }
-        let weeklyMinutesAfter = weeklyMinutesBefore
-        for (const ymd of weekYmds) weeklyMinutesAfter += minutesForYmdFromSegments(shiftSegments, ymd)
+      const dailyMsAdded = new Map()
+      for (const p of shiftSegments) {
+        dailyMsAdded.set(p.ymd, (dailyMsAdded.get(p.ymd) || 0) + p.ms)
+      }
 
-        const weeklyHoursBefore = weeklyMinutesBefore / 60
-        const weeklyHoursAfter = weeklyMinutesAfter / 60
+      let weeklyMsBefore = 0
+      let weeklyMsAfter = 0
+      for (const ymd of weekYmds) {
+        weeklyMsBefore += dailyMsBefore.get(ymd) || 0
+        weeklyMsAfter += (dailyMsBefore.get(ymd) || 0) + (dailyMsAdded.get(ymd) || 0)
+      }
 
-        if (weeklyHoursAfter >= WEEKLY_HOURS_HARD_MAX) {
-          violations.push({
-            code: 'overtime_weekly_hard',
-            severity: 'block',
-            message: `Weekly hours would be ${weeklyHoursAfter.toFixed(1)}h (limit ${WEEKLY_HOURS_HARD_MAX}h)`,
-            hoursBefore: weeklyHoursBefore,
-            hoursAfter: weeklyHoursAfter,
-            weekStart: weekStartYmd,
-          })
-        } else if (weeklyHoursAfter >= WEEKLY_HOURS_OVERTIME) {
-          violations.push({
-            code: 'overtime_weekly_overtime',
-            severity: 'warning',
-            message: `Weekly hours would be ${weeklyHoursAfter.toFixed(1)}h (overtime starts at ${WEEKLY_HOURS_OVERTIME}h)`,
-            hoursBefore: weeklyHoursBefore,
-            hoursAfter: weeklyHoursAfter,
-            weekStart: weekStartYmd,
-          })
-        } else if (weeklyHoursAfter >= WEEKLY_HOURS_WARNING) {
-          violations.push({
-            code: 'overtime_weekly_warning',
-            severity: 'warning',
-            message: `Weekly hours would be ${weeklyHoursAfter.toFixed(1)}h (near overtime)`,
-            hoursBefore: weeklyHoursBefore,
-            hoursAfter: weeklyHoursAfter,
-            weekStart: weekStartYmd,
-          })
-        }
+      const weeklyHoursBefore = weeklyMsBefore / 3600000
+      const weeklyHoursAfter = weeklyMsAfter / 3600000
 
-        const shiftDays = Array.from(new Set(shiftSegments.map((s) => s.ymd)))
-        const daily = []
-
-        for (const ymd of shiftDays) {
-          let beforeMinutes = 0
-          for (const s of assigned) {
-            const aStart = new Date(s.startAt)
-            const aEnd = new Date(s.endAt)
-            if (Number.isNaN(aStart.getTime()) || Number.isNaN(aEnd.getTime())) continue
-            const segs = getSegmentsForShift(aStart, aEnd, timeZone)
-            if (!segs) continue
-            beforeMinutes += minutesForYmdFromSegments(segs, ymd)
-          }
-          const addedMinutes = minutesForYmdFromSegments(shiftSegments, ymd)
-          const afterMinutes = beforeMinutes + addedMinutes
-          const hoursBefore = beforeMinutes / 60
-          const hoursAfter = afterMinutes / 60
-          daily.push({ date: ymd, hoursBefore, hoursAfter })
-
-          if (hoursAfter >= DAILY_HOURS_HARD_MAX) {
-            violations.push({
-              code: 'overtime_daily_hard',
-              severity: 'block',
-              message: `Daily hours on ${ymd} would be ${hoursAfter.toFixed(1)}h (limit ${DAILY_HOURS_HARD_MAX}h)`,
-              date: ymd,
-              hoursBefore,
-              hoursAfter,
-            })
-          } else if (hoursAfter >= DAILY_HOURS_WARNING) {
-            violations.push({
-              code: 'overtime_daily_warning',
-              severity: 'warning',
-              message: `Daily hours on ${ymd} would be ${hoursAfter.toFixed(1)}h (near overtime)`,
-              date: ymd,
-              hoursBefore,
-              hoursAfter,
-            })
-          }
-        }
-
-        const workedBefore = workedDatesFromAssignedShifts(assigned, timeZone)
-        const workedAfter = new Set(workedBefore)
-        for (const seg of shiftSegments) {
-          if (seg.endMin > seg.startMin) workedAfter.add(seg.ymd)
-        }
-
-        let maxBefore = 0
-        let maxAfter = 0
-        let streakEnd = null
-        for (const ymd of shiftDays) {
-          const b = consecutiveDaysEndingOn(workedBefore, ymd)
-          const a = consecutiveDaysEndingOn(workedAfter, ymd)
-          if (b > maxBefore) maxBefore = b
-          if (a > maxAfter) {
-            maxAfter = a
-            streakEnd = ymd
-          }
-        }
-
-        if (maxAfter > CONSECUTIVE_DAYS_HARD_MAX) {
-          violations.push({
-            code: 'overtime_consecutive_hard',
-            severity: 'block',
-            overrideable: false,
-            message: `This would schedule ${maxAfter} consecutive days (max ${CONSECUTIVE_DAYS_HARD_MAX})`,
-            consecutiveDaysBefore: maxBefore,
-            consecutiveDaysAfter: maxAfter,
-            endDate: streakEnd,
-          })
-        } else if (maxAfter === CONSECUTIVE_DAYS_HARD_MAX) {
-          violations.push({
-            code: 'overtime_consecutive_hard',
-            severity: 'block',
-            overrideable: true,
-            message: `This would schedule ${maxAfter} consecutive days (override required)`,
-            consecutiveDaysBefore: maxBefore,
-            consecutiveDaysAfter: maxAfter,
-            endDate: streakEnd,
-          })
-          suggestions.push({ code: 'manager_override_required' })
-        } else if (maxAfter >= CONSECUTIVE_DAYS_WARNING) {
-          violations.push({
-            code: 'overtime_consecutive_warning',
-            severity: 'warning',
-            message: `This would schedule ${maxAfter} consecutive days`,
-            consecutiveDaysBefore: maxBefore,
-            consecutiveDaysAfter: maxAfter,
-            endDate: streakEnd,
-          })
-        }
-
-        overtime = {
-          timeZone,
+      if (weeklyHoursAfter >= WEEKLY_HOURS_HARD_MAX) {
+        violations.push({
+          code: 'overtime_weekly_hard',
+          severity: 'block',
+          message: `Weekly hours would be ${weeklyHoursAfter.toFixed(1)}h (limit ${WEEKLY_HOURS_HARD_MAX}h)`,
+          hoursBefore: weeklyHoursBefore,
+          hoursAfter: weeklyHoursAfter,
           weekStart: weekStartYmd,
-          weeklyHoursBefore,
-          weeklyHoursAfter,
-          daily,
+        })
+      } else if (weeklyHoursAfter >= WEEKLY_HOURS_OVERTIME) {
+        violations.push({
+          code: 'overtime_weekly_overtime',
+          severity: 'warning',
+          message: `Weekly hours would be ${weeklyHoursAfter.toFixed(1)}h (overtime starts at ${WEEKLY_HOURS_OVERTIME}h)`,
+          hoursBefore: weeklyHoursBefore,
+          hoursAfter: weeklyHoursAfter,
+          weekStart: weekStartYmd,
+        })
+      } else if (weeklyHoursAfter >= WEEKLY_HOURS_WARNING) {
+        violations.push({
+          code: 'overtime_weekly_warning',
+          severity: 'warning',
+          message: `Weekly hours would be ${weeklyHoursAfter.toFixed(1)}h (near overtime)`,
+          hoursBefore: weeklyHoursBefore,
+          hoursAfter: weeklyHoursAfter,
+          weekStart: weekStartYmd,
+        })
+      }
+
+      const shiftDays = Array.from(new Set(shiftSegments.map((s) => s.ymd)))
+      const daily = []
+
+      for (const ymd of shiftDays) {
+        const beforeMs = dailyMsBefore.get(ymd) || 0
+        const afterMs = beforeMs + (dailyMsAdded.get(ymd) || 0)
+        const hoursBefore = beforeMs / 3600000
+        const hoursAfter = afterMs / 3600000
+        daily.push({ date: ymd, hoursBefore, hoursAfter })
+
+        if (hoursAfter >= DAILY_HOURS_HARD_MAX) {
+          violations.push({
+            code: 'overtime_daily_hard',
+            severity: 'block',
+            message: `Daily hours on ${ymd} would be ${hoursAfter.toFixed(1)}h (limit ${DAILY_HOURS_HARD_MAX}h)`,
+            date: ymd,
+            hoursBefore,
+            hoursAfter,
+          })
+        } else if (hoursAfter >= DAILY_HOURS_WARNING) {
+          violations.push({
+            code: 'overtime_daily_warning',
+            severity: 'warning',
+            message: `Daily hours on ${ymd} would be ${hoursAfter.toFixed(1)}h (near overtime)`,
+            date: ymd,
+            hoursBefore,
+            hoursAfter,
+          })
+        }
+      }
+
+      const workedBefore = new Set()
+      for (const [ymd, ms] of dailyMsBefore.entries()) {
+        if (ms > 0) workedBefore.add(ymd)
+      }
+      const workedAfter = new Set(workedBefore)
+      for (const [ymd, ms] of dailyMsAdded.entries()) {
+        if (ms > 0) workedAfter.add(ymd)
+      }
+
+      let maxBefore = 0
+      let maxAfter = 0
+      let streakEnd = null
+      for (const ymd of weekYmds) {
+        const b = consecutiveDaysEndingOn(workedBefore, ymd)
+        const a = consecutiveDaysEndingOn(workedAfter, ymd)
+        if (b > maxBefore) maxBefore = b
+        if (a > maxAfter) {
+          maxAfter = a
+          streakEnd = ymd
+        }
+      }
+
+      if (maxAfter > CONSECUTIVE_DAYS_HARD_MAX) {
+        violations.push({
+          code: 'overtime_consecutive_hard',
+          severity: 'block',
+          overrideable: false,
+          message: `This would schedule ${maxAfter} consecutive days (max ${CONSECUTIVE_DAYS_HARD_MAX})`,
           consecutiveDaysBefore: maxBefore,
           consecutiveDaysAfter: maxAfter,
-        }
+          endDate: streakEnd,
+        })
+      } else if (maxAfter === CONSECUTIVE_DAYS_HARD_MAX) {
+        violations.push({
+          code: 'overtime_consecutive_hard',
+          severity: 'block',
+          overrideable: true,
+          message: `This would schedule ${maxAfter} consecutive days (override required)`,
+          consecutiveDaysBefore: maxBefore,
+          consecutiveDaysAfter: maxAfter,
+          endDate: streakEnd,
+        })
+        suggestions.push({ code: 'manager_override_required' })
+      } else if (maxAfter >= CONSECUTIVE_DAYS_WARNING) {
+        violations.push({
+          code: 'overtime_consecutive_warning',
+          severity: 'warning',
+          message: `This would schedule ${maxAfter} consecutive days`,
+          consecutiveDaysBefore: maxBefore,
+          consecutiveDaysAfter: maxAfter,
+          endDate: streakEnd,
+        })
+      }
+
+      overtime = {
+        timeZone: staffTimeZone,
+        weekStart: weekStartYmd,
+        weeklyHoursBefore,
+        weeklyHoursAfter,
+        daily,
+        consecutiveDaysBefore: maxBefore,
+        consecutiveDaysAfter: maxAfter,
       }
     }
   }

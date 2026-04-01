@@ -4,6 +4,7 @@ const { getPool } = require('../db')
 const { requireRole, requireUser } = require('../middleware/rbac')
 const { validateAssignment } = require('../services/validateAssignment')
 const { findValidAlternatives } = require('../services/findValidAlternatives')
+const { createNotification } = require('../services/notifications')
 
 const router = express.Router()
 
@@ -124,6 +125,33 @@ router.post('/drop', ...requireRole(['staff']), async (req, res) => {
 
     await pool.query('commit')
     const swap = created.rows[0]
+    await createNotification(
+      staffId,
+      'drop.submitted',
+      'Drop request submitted',
+      { swapRequestId: swap.id, assignmentId, shiftId: assignment.shift_id },
+      { pool, realtime: req.app.locals.realtime },
+    )
+
+    const managers = await pool.query(
+      `
+        select distinct u.id
+        from users u
+        left join staff_locations sl on sl.staff_id = u.id
+        where (u.role = 'admin'::user_role)
+           or (u.role = 'manager'::user_role and sl.location_id = $1)
+      `,
+      [assignment.location_id],
+    )
+    for (const m of managers.rows) {
+      await createNotification(
+        m.id,
+        'drop.pending_approval',
+        'New drop request pending approval',
+        { swapRequestId: swap.id, shiftId: assignment.shift_id, locationId: assignment.location_id },
+        { pool, realtime: req.app.locals.realtime },
+      )
+    }
     req.app.locals.realtime?.emitToLocation(assignment.location_id, 'swap:new', { swapId: swap.id, type: swap.type, shiftId: assignment.shift_id })
     req.app.locals.realtime?.emitToUser(staffId, 'swap:submitted', { swapId: swap.id, type: swap.type })
     res.status(201).json({ swap })
@@ -243,9 +271,12 @@ router.post('/request', ...requireRole(['staff']), async (req, res) => {
       [assignmentId, staffA, targetStaffId, 'swap', 'pending', swapExpiresAt, targetAssignmentId],
     )
 
-    await pool.query(
-      'insert into notifications (user_id, type, message, metadata) values ($1,$2,$3,$4)',
-      [targetStaffId, 'swap', 'New swap request', JSON.stringify({ swapRequestId: created.rows[0].id })],
+    await createNotification(
+      targetStaffId,
+      'swap.new',
+      'New swap request',
+      { swapRequestId: created.rows[0].id },
+      { pool, realtime: req.app.locals.realtime },
     )
 
     await pool.query(
@@ -262,6 +293,13 @@ router.post('/request', ...requireRole(['staff']), async (req, res) => {
 
     await pool.query('commit')
     const swap = created.rows[0]
+    await createNotification(
+      staffA,
+      'swap.submitted',
+      'Swap request submitted',
+      { swapRequestId: swap.id, assignmentId, targetStaffId, targetAssignmentId: targetAssignmentId || null },
+      { pool, realtime: req.app.locals.realtime },
+    )
     req.app.locals.realtime?.emitToUser(targetStaffId, 'swap:new', { swapId: swap.id, type: swap.type, fromStaffId: staffA })
     req.app.locals.realtime?.emitToUser(staffA, 'swap:submitted', { swapId: swap.id, type: swap.type })
     req.app.locals.realtime?.emitToLocation(assignmentA.location_id, 'swap:new', { swapId: swap.id, type: swap.type, shiftId: assignmentA.shift_id })
@@ -327,14 +365,12 @@ router.patch('/:swapId/respond', ...requireRole(['staff']), async (req, res) => 
   await pool.query('begin')
   try {
     await pool.query('update swap_requests set status = $1::swap_request_status where id = $2', [nextStatus, swapId])
-    await pool.query(
-      'insert into notifications (user_id, type, message, metadata) values ($1,$2,$3,$4)',
-      [
-        swap.requested_by,
-        'swap',
-        response === 'accept' ? 'Swap accepted (awaiting manager approval)' : 'Swap declined',
-        JSON.stringify({ swapRequestId: swapId }),
-      ],
+    await createNotification(
+      swap.requested_by,
+      response === 'accept' ? 'swap.accepted' : 'swap.declined',
+      response === 'accept' ? 'Swap accepted (awaiting manager approval)' : 'Swap declined',
+      { swapRequestId: swapId },
+      { pool, realtime: req.app.locals.realtime },
     )
     await pool.query(
       'insert into audit_logs (user_id, action, entity_type, entity_id, before, after) values ($1,$2,$3,$4,$5,$6)',
@@ -351,6 +387,28 @@ router.patch('/:swapId/respond', ...requireRole(['staff']), async (req, res) => 
   } catch (e) {
     await pool.query('rollback')
     throw e
+  }
+
+  if (response === 'accept') {
+    const managers = await pool.query(
+      `
+        select distinct u.id
+        from users u
+        left join staff_locations sl on sl.staff_id = u.id
+        where (u.role = 'admin'::user_role)
+           or (u.role = 'manager'::user_role and sl.location_id = $1)
+      `,
+      [swap.location_id],
+    )
+    for (const m of managers.rows) {
+      await createNotification(
+        m.id,
+        'swap.pending_approval',
+        'Swap request pending approval',
+        { swapRequestId: swapId, shiftId: swap.shift_id, locationId: swap.location_id },
+        { pool, realtime: req.app.locals.realtime },
+      )
+    }
   }
 
   req.app.locals.realtime?.emitToUser(swap.requested_by, response === 'accept' ? 'swap:accepted' : 'swap:declined', {
@@ -495,14 +553,20 @@ router.patch('/:swapId/approve', ...requireRole(['admin', 'manager']), async (re
         [req.user.id, 'swap.manager.deny', 'swap_request', swapId, JSON.stringify({ status: swap.status }), JSON.stringify({ status: 'rejected' })],
       )
 
-      await pool.query(
-        'insert into notifications (user_id, type, message, metadata) values ($1,$2,$3,$4)',
-        [swap.requested_by, 'swap', 'Swap/drop denied by manager', JSON.stringify({ swapRequestId: swapId })],
+      await createNotification(
+        swap.requested_by,
+        'swap.denied',
+        'Swap/drop denied by manager',
+        { swapRequestId: swapId },
+        { pool, realtime: req.app.locals.realtime },
       )
       if (swap.target_staff_id) {
-        await pool.query(
-          'insert into notifications (user_id, type, message, metadata) values ($1,$2,$3,$4)',
-          [swap.target_staff_id, 'swap', 'Swap denied by manager', JSON.stringify({ swapRequestId: swapId })],
+        await createNotification(
+          swap.target_staff_id,
+          'swap.denied',
+          'Swap denied by manager',
+          { swapRequestId: swapId },
+          { pool, realtime: req.app.locals.realtime },
         )
       }
       await pool.query('commit')
@@ -605,14 +669,20 @@ router.patch('/:swapId/approve', ...requireRole(['admin', 'manager']), async (re
       [req.user.id, 'swap.manager.approve', 'swap_request', swapId, JSON.stringify({ status: swap.status }), JSON.stringify({ status: 'approved' })],
     )
 
-    await pool.query(
-      'insert into notifications (user_id, type, message, metadata) values ($1,$2,$3,$4)',
-      [swap.requested_by, 'swap', 'Swap/drop approved', JSON.stringify({ swapRequestId: swapId })],
+    await createNotification(
+      swap.requested_by,
+      'swap.approved',
+      'Swap/drop approved',
+      { swapRequestId: swapId },
+      { pool, realtime: req.app.locals.realtime },
     )
     if (swap.target_staff_id) {
-      await pool.query(
-        'insert into notifications (user_id, type, message, metadata) values ($1,$2,$3,$4)',
-        [swap.target_staff_id, 'swap', 'Swap approved', JSON.stringify({ swapRequestId: swapId })],
+      await createNotification(
+        swap.target_staff_id,
+        'swap.approved',
+        'Swap approved',
+        { swapRequestId: swapId },
+        { pool, realtime: req.app.locals.realtime },
       )
     }
 

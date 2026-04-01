@@ -2,6 +2,7 @@ const express = require('express')
 
 const { getPool } = require('../db')
 const { requireUser } = require('../middleware/rbac')
+const { createNotification } = require('../services/notifications')
 
 const router = express.Router()
 
@@ -118,6 +119,7 @@ router.put('/windows', async (req, res) => {
     throw e
   }
 
+  await createNotification(staffId, 'availability.updated', 'Availability updated', { kind: 'windows' }, { pool, realtime: req.app.locals.realtime })
   res.json({ ok: true })
 })
 
@@ -161,6 +163,13 @@ router.post('/exceptions', async (req, res) => {
   )
 
   const e = inserted.rows[0]
+  await createNotification(
+    staffId,
+    'availability.updated',
+    'Availability exception added',
+    { kind: 'exception', exceptionId: e.id, date: e.date, type: e.type },
+    { pool, realtime: req.app.locals.realtime },
+  )
   res.status(201).json({
     exception: {
       id: e.id,
@@ -188,6 +197,13 @@ router.delete('/exceptions/:exceptionId', async (req, res) => {
     return
   }
 
+  await createNotification(
+    staffId,
+    'availability.updated',
+    'Availability exception removed',
+    { kind: 'exception', exceptionId },
+    { pool, realtime: req.app.locals.realtime },
+  )
   res.json({ ok: true })
 })
 

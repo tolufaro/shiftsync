@@ -34,6 +34,9 @@ async function validateAssignment(staffId, shiftId, options = {}) {
     return { valid: false, violations: [{ code: 'shift_not_found', shiftId }], suggestions: [] }
   }
 
+  const staffTzResult = await pool.query('select home_timezone from users where id = $1 limit 1', [staffId])
+  const staffTimeZone = staffTzResult.rows[0]?.home_timezone || 'UTC'
+
   const querySkills = () => pool.query('select skill_id from staff_skills where staff_id = $1', [staffId])
   const queryLocations = () => pool.query('select location_id from staff_locations where staff_id = $1', [staffId])
   const queryAssigned = () =>
@@ -76,6 +79,7 @@ async function validateAssignment(staffId, shiftId, options = {}) {
 
   return validateAssignmentCore({
     staffId,
+    staffTimeZone,
     shift: {
       id: shift.id,
       locationId: shift.location_id,

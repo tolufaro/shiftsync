@@ -5,6 +5,7 @@ const { requireRole } = require('../middleware/rbac')
 const { findValidAlternatives } = require('../services/findValidAlternatives')
 const { validateAssignment } = require('../services/validateAssignment')
 const { assignStaffToShift } = require('../services/assignShift')
+const { createNotification } = require('../services/notifications')
 
 const router = express.Router()
 
@@ -47,6 +48,21 @@ async function ensureManagerLocationAccess(pool, userId, locationId) {
   return exists.rows.length > 0
 }
 
+async function notifyAssignedStaff(pool, shiftId, type, message, metadata, realtime) {
+  const assigned = await pool.query(
+    `
+      select staff_id
+      from shift_assignments
+      where shift_id = $1 and status <> 'dropped'::shift_assignment_status
+    `,
+    [shiftId],
+  )
+
+  for (const r of assigned.rows) {
+    await createNotification(r.staff_id, type, message, metadata, { pool, realtime })
+  }
+}
+
 async function cancelPendingSwapsForShift(pool, shiftId, actorUserId, locationId, realtime) {
   const pending = await pool.query(
     `
@@ -61,41 +77,50 @@ async function cancelPendingSwapsForShift(pool, shiftId, actorUserId, locationId
 
   if (!pending.rows.length) return 0
 
-  await pool.query('begin')
+  const client = typeof pool.connect === 'function' ? await pool.connect() : null
+  const db = client || pool
+
   try {
+    if (client) await client.query('begin')
+
     const ids = pending.rows.map((r) => r.id)
-    await pool.query('update swap_requests set status = $1::swap_request_status where id = any($2::uuid[])', [
-      'cancelled',
-      ids,
-    ])
+    await db.query('update swap_requests set status = $1::swap_request_status where id = any($2::uuid[])', ['cancelled', ids])
 
     for (const r of pending.rows) {
-      await pool.query(
+      await db.query(
         'insert into audit_logs (user_id, action, entity_type, entity_id, before, after) values ($1,$2,$3,$4,$5,$6)',
         [actorUserId, 'swap.cancel.shift_edit', 'swap_request', r.id, JSON.stringify({}), JSON.stringify({ status: 'cancelled' })],
       )
 
-      await pool.query('insert into notifications (user_id, type, message, metadata) values ($1,$2,$3,$4)', [
+      await createNotification(
         r.requested_by,
-        'swap',
+        'swap.cancelled',
         'Swap/drop request cancelled due to shift update',
-        JSON.stringify({ shiftId, swapRequestId: r.id }),
-      ])
+        { shiftId, swapRequestId: r.id },
+        { pool: db, realtime },
+      )
 
       if (r.target_staff_id) {
-        await pool.query('insert into notifications (user_id, type, message, metadata) values ($1,$2,$3,$4)', [
+        await createNotification(
           r.target_staff_id,
-          'swap',
+          'swap.cancelled',
           'Swap request cancelled due to shift update',
-          JSON.stringify({ shiftId, swapRequestId: r.id }),
-        ])
+          { shiftId, swapRequestId: r.id },
+          { pool: db, realtime },
+        )
       }
     }
 
-    await pool.query('commit')
+    if (client) await client.query('commit')
   } catch (e) {
-    await pool.query('rollback')
+    if (client) {
+      try {
+        await client.query('rollback')
+      } catch {}
+    }
     throw e
+  } finally {
+    if (client) client.release()
   }
 
   if (realtime && locationId) {
@@ -471,17 +496,21 @@ router.patch('/:shiftId', async (req, res) => {
   if (!updates.length) {
     const r = await pool.query(
       `
-        select s.id, s.location_id, l.name as location_name, l.timezone as location_timezone,
-               s.required_skill_id, sk.name as required_skill_name,
-               s.start_at, s.end_at, s.headcount_needed, s.status, s.created_at, s.updated_at
+        select
+          s.id,
+          s.location_id,
+          l.name as location_name,
+          l.timezone as location_timezone,
+          s.required_skill_id,
+          sk.name as required_skill_name,
+          s.start_at,
+          s.end_at,
+          s.is_premium,
+          s.headcount_needed,
+          s.status,
+          s.created_at,
+          s.updated_at
         from shifts s
-        join locations l on l.id = s.location_id
-        s.is_premium,
-        left join skills sk on sk.id = s.required_skill_id
-        where s.id = $1
-        limit 1
-      `,
-      [shiftId],
         join locations l on l.id = s.location_id
         left join skills sk on sk.id = s.required_skill_id
         where s.id = $1
@@ -499,6 +528,7 @@ router.patch('/:shiftId', async (req, res) => {
         requiredSkill: row.required_skill_id ? { id: row.required_skill_id, name: row.required_skill_name } : null,
         startAt: new Date(row.start_at).toISOString(),
         endAt: new Date(row.end_at).toISOString(),
+        isPremium: Boolean(row.is_premium),
         headcountNeeded: row.headcount_needed,
         status: row.status,
         createdAt: row.created_at,
@@ -573,6 +603,7 @@ router.patch('/:shiftId', async (req, res) => {
   const r = result.rows[0]
 
   req.app.locals.realtime?.emitToLocation(r.location_id, 'schedule:updated', { locationId: r.location_id, shiftId: r.id, reason: 'shift.updated' })
+  await notifyAssignedStaff(pool, shiftId, 'shift.updated', 'A shift you are assigned to was updated', { shiftId }, req.app.locals.realtime)
 
   res.json({
     shift: {
@@ -611,6 +642,14 @@ router.delete('/:shiftId', async (req, res) => {
     }
   }
 
+  await notifyAssignedStaff(
+    pool,
+    shiftId,
+    'shift.deleted',
+    'A shift you were assigned to was deleted',
+    { shiftId },
+    req.app.locals.realtime,
+  )
   await cancelPendingSwapsForShift(pool, shiftId, req.user.id, current.location_id, req.app.locals.realtime)
   await pool.query('delete from shifts where id = $1', [shiftId])
   req.app.locals.realtime?.emitToLocation(current.location_id, 'schedule:updated', { locationId: current.location_id, shiftId, reason: 'shift.deleted' })
@@ -692,6 +731,14 @@ router.patch('/:shiftId/status', async (req, res) => {
   const r = result.rows[0]
 
   req.app.locals.realtime?.emitToLocation(r.location_id, 'schedule:updated', { locationId: r.location_id, shiftId: r.id, reason: 'shift.status' })
+  await notifyAssignedStaff(
+    pool,
+    shiftId,
+    r.status === 'published' ? 'shift.published' : 'shift.unpublished',
+    r.status === 'published' ? 'A shift you are assigned to was published' : 'A shift you are assigned to was unpublished',
+    { shiftId, status: r.status },
+    req.app.locals.realtime,
+  )
 
   res.json({
     shift: {
@@ -833,6 +880,32 @@ router.post('/:shiftId/assign', async (req, res) => {
 
   req.app.locals.realtime?.emitToLocation(result.locationId, 'schedule:updated', { locationId: result.locationId, shiftId })
   req.app.locals.realtime?.emitToUser(staffId, 'assignment:new', { shiftId, assignmentId: result.assignmentId })
+
+  await createNotification(
+    staffId,
+    'assignment.new',
+    'You were assigned to a shift',
+    { shiftId, assignmentId: result.assignmentId },
+    { pool, realtime: req.app.locals.realtime },
+  )
+
+  if (result.warnings && result.warnings.length) {
+    const msgs = result.warnings.map((w) => w.message || w.code)
+    await createNotification(
+      staffId,
+      'overtime.warning',
+      `Overtime warning: ${msgs.join(' · ')}`,
+      { shiftId, staffId, assignmentId: result.assignmentId, warnings: result.warnings, overtime: result.overtime || null },
+      { pool, realtime: req.app.locals.realtime },
+    )
+    await createNotification(
+      req.user.id,
+      'overtime.warning',
+      `Overtime warning: ${msgs.join(' · ')}`,
+      { shiftId, staffId, assignmentId: result.assignmentId, warnings: result.warnings, overtime: result.overtime || null },
+      { pool, realtime: req.app.locals.realtime },
+    )
+  }
 
   res.status(201).json({ ok: true, assignmentId: result.assignmentId, warnings: result.warnings, overtime: result.overtime })
 })

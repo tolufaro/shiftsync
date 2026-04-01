@@ -3,6 +3,7 @@ const express = require('express')
 const { getPool } = require('../db')
 const { requireRole } = require('../middleware/rbac')
 const { validateAssignment } = require('../services/validateAssignment')
+const { createNotification } = require('../services/notifications')
 
 const router = express.Router()
 
@@ -173,6 +174,14 @@ router.post('/:shiftId/claim', async (req, res) => {
 
   req.app.locals.realtime?.emitToLocation(shift.location_id, 'schedule:updated', { locationId: shift.location_id, shiftId, reason: 'shift.claim' })
   req.app.locals.realtime?.emitToUser(staffId, 'assignment:new', { shiftId, assignmentId })
+
+  await createNotification(
+    staffId,
+    'assignment.new',
+    'You claimed a shift',
+    { shiftId, assignmentId },
+    { pool, realtime: req.app.locals.realtime },
+  )
 
   res.status(201).json({ ok: true, assignmentId })
 })

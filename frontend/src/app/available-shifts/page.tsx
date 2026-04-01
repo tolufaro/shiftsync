@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { formatDayLabel, formatTimeRange } from '../../lib/time'
+
 type ShiftRow = {
   id: string
   location: { id: string; name: string; timezone: string }
@@ -11,16 +13,6 @@ type ShiftRow = {
   endAt: string
   headcountNeeded: number
   filled: number
-}
-
-function formatTimeRange(startAt: string, endAt: string, timeZone: string) {
-  const fmt = new Intl.DateTimeFormat('en-US', { timeZone, hour: 'numeric', minute: '2-digit' })
-  return `${fmt.format(new Date(startAt))}–${fmt.format(new Date(endAt))}`
-}
-
-function formatDate(startAt: string, timeZone: string) {
-  const fmt = new Intl.DateTimeFormat('en-US', { timeZone, weekday: 'short', month: 'short', day: 'numeric' })
-  return fmt.format(new Date(startAt))
 }
 
 export default function AvailableShiftsPage() {
@@ -88,7 +80,7 @@ export default function AvailableShiftsPage() {
           {shifts.map((s) => (
             <div key={s.id} style={{ padding: 12, border: '1px solid #e5e5e5', borderRadius: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                <div style={{ fontWeight: 700 }}>{formatDate(s.startAt, s.location.timezone)}</div>
+                <div style={{ fontWeight: 700 }}>{formatDayLabel(s.startAt, s.location.timezone)}</div>
                 <div style={{ color: '#555' }}>
                   {s.filled}/{s.headcountNeeded} filled
                 </div>
@@ -125,4 +117,3 @@ export default function AvailableShiftsPage() {
     </div>
   )
 }
-
