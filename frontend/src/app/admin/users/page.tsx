@@ -104,7 +104,10 @@ export default function AdminUsersPage() {
     <div style={{ maxWidth: 1000, margin: '40px auto', padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
         <h1 style={{ margin: 0 }}>Admin — Users</h1>
-        <Link href="/">Home</Link>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <Link href="/admin/audit">Audit Export</Link>
+          <Link href="/">Home</Link>
+        </div>
       </div>
 
       {me ? <div style={{ marginTop: 8, color: '#555' }}>Signed in as {me.email}</div> : null}

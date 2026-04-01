@@ -3,6 +3,7 @@ const express = require('express')
 
 const { getPool } = require('../db')
 const { requireRole } = require('../middleware/rbac')
+const { logAudit } = require('../services/audit')
 
 const router = express.Router()
 
@@ -13,6 +14,16 @@ function normalizeEmail(email) {
 function cleanString(v) {
   const s = String(v || '').trim()
   return s.length ? s : null
+}
+
+function isIsoDate(value) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+}
+
+function csvEscape(value) {
+  if (value === null || value === undefined) return '""'
+  const s = String(value)
+  return `"${s.replace(/"/g, '""')}"`
 }
 
 router.use(...requireRole('admin'))
@@ -123,6 +134,7 @@ router.post('/users', async (req, res) => {
     [email, passwordHash, role, name],
   )
 
+  await logAudit(req.user.id, 'admin.user.create', 'user', created.rows[0].id, null, { email, name, role }, { pool })
   res.status(201).json({ user: created.rows[0] })
 })
 
@@ -145,7 +157,7 @@ router.patch('/users/:userId', async (req, res) => {
 
   const pool = getPool()
 
-  const existing = await pool.query('select id, email from users where id = $1 limit 1', [userId])
+  const existing = await pool.query('select id, email, name, role from users where id = $1 limit 1', [userId])
   const current = existing.rows[0]
   if (!current) {
     res.status(404).json({ error: 'not_found' })
@@ -193,6 +205,15 @@ router.patch('/users/:userId', async (req, res) => {
     params,
   )
 
+  await logAudit(
+    req.user.id,
+    'admin.user.update',
+    'user',
+    userId,
+    { email: current.email, name: current.name, role: current.role },
+    { email: updated.rows[0].email, name: updated.rows[0].name, role: updated.rows[0].role },
+    { pool },
+  )
   res.json({ user: updated.rows[0] })
 })
 
@@ -220,6 +241,8 @@ router.put('/users/:userId/locations', async (req, res) => {
     return
   }
 
+  const before = await pool.query('select location_id from staff_locations where staff_id = $1 order by location_id', [userId])
+
   await pool.query('begin')
   try {
     await pool.query('delete from staff_locations where staff_id = $1', [userId])
@@ -232,6 +255,15 @@ router.put('/users/:userId/locations', async (req, res) => {
     throw e
   }
 
+  await logAudit(
+    req.user.id,
+    'admin.user.locations.update',
+    'user',
+    userId,
+    { locationIds: before.rows.map((r) => r.location_id) },
+    { locationIds },
+    { pool },
+  )
   res.json({ ok: true })
 })
 
@@ -247,6 +279,8 @@ router.put('/users/:userId/skills', async (req, res) => {
     return
   }
 
+  const before = await pool.query('select skill_id from staff_skills where staff_id = $1 order by skill_id', [userId])
+
   await pool.query('begin')
   try {
     await pool.query('delete from staff_skills where staff_id = $1', [userId])
@@ -259,8 +293,101 @@ router.put('/users/:userId/skills', async (req, res) => {
     throw e
   }
 
+  await logAudit(
+    req.user.id,
+    'admin.user.skills.update',
+    'user',
+    userId,
+    { skillIds: before.rows.map((r) => r.skill_id) },
+    { skillIds },
+    { pool },
+  )
   res.json({ ok: true })
 })
 
-module.exports = { adminRouter: router }
+router.get('/audit/export', async (req, res) => {
+  const from = cleanString(req.query?.from)
+  const to = cleanString(req.query?.to)
+  const locationId = cleanString(req.query?.locationId)
 
+  if (!from || !to || !isIsoDate(from) || !isIsoDate(to)) {
+    res.status(400).json({ error: 'from_and_to_required' })
+    return
+  }
+
+  const fromTs = `${from}T00:00:00.000Z`
+  const toTs = `${to}T23:59:59.999Z`
+
+  const pool = getPool()
+
+  const params = [fromTs, toTs]
+  let locationClause = ''
+  if (locationId) {
+    params.push(locationId)
+    const locParam = `$${params.length}::uuid`
+    locationClause = `
+      and (
+        (a.entity_type = 'shift' and s.location_id = ${locParam})
+        or (a.entity_type = 'shift_assignment' and s2.location_id = ${locParam})
+        or (a.entity_type = 'swap_request' and s3.location_id = ${locParam})
+      )
+    `
+  }
+
+  const result = await pool.query(
+    `
+      select
+        a.id,
+        a.created_at,
+        a.action,
+        a.entity_type,
+        a.entity_id,
+        a.before,
+        a.after,
+        u.email as actor_email,
+        s.location_id as shift_location_id,
+        s2.location_id as assignment_location_id,
+        s3.location_id as swap_location_id
+      from audit_logs a
+      left join users u on u.id = a.user_id
+      left join shifts s on (a.entity_type = 'shift' and a.entity_id = s.id)
+      left join shift_assignments sa on (a.entity_type = 'shift_assignment' and a.entity_id = sa.id)
+      left join shifts s2 on (a.entity_type = 'shift_assignment' and sa.shift_id = s2.id)
+      left join swap_requests sr on (a.entity_type = 'swap_request' and a.entity_id = sr.id)
+      left join shift_assignments sa2 on (a.entity_type = 'swap_request' and sr.assignment_id = sa2.id)
+      left join shifts s3 on (a.entity_type = 'swap_request' and sa2.shift_id = s3.id)
+      where a.created_at >= $1::timestamptz
+        and a.created_at <= $2::timestamptz
+        ${locationClause}
+      order by a.created_at asc
+      limit 20000
+    `,
+    params,
+  )
+
+  const lines = []
+  lines.push(['created_at', 'actor_email', 'action', 'entity_type', 'entity_id', 'location_id', 'before', 'after'].map(csvEscape).join(','))
+  for (const r of result.rows) {
+    const location = r.shift_location_id || r.assignment_location_id || r.swap_location_id || ''
+    lines.push(
+      [
+        r.created_at,
+        r.actor_email || '',
+        r.action,
+        r.entity_type,
+        r.entity_id || '',
+        location,
+        r.before ? JSON.stringify(r.before) : '',
+        r.after ? JSON.stringify(r.after) : '',
+      ]
+        .map(csvEscape)
+        .join(','),
+    )
+  }
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  res.setHeader('Content-Disposition', `attachment; filename="audit_${from}_to_${to}.csv"`)
+  res.send(lines.join('\n'))
+})
+
+module.exports = { adminRouter: router }

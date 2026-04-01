@@ -3,6 +3,7 @@ const express = require('express')
 const { getPool } = require('../db')
 const { requireUser } = require('../middleware/rbac')
 const { createNotification } = require('../services/notifications')
+const { logAudit } = require('../services/audit')
 
 const router = express.Router()
 
@@ -119,6 +120,7 @@ router.put('/windows', async (req, res) => {
     throw e
   }
 
+  await logAudit(staffId, 'availability.windows.update', 'availability', staffId, null, { windows: normalized }, { pool })
   await createNotification(staffId, 'availability.updated', 'Availability updated', { kind: 'windows' }, { pool, realtime: req.app.locals.realtime })
   res.json({ ok: true })
 })
@@ -163,6 +165,15 @@ router.post('/exceptions', async (req, res) => {
   )
 
   const e = inserted.rows[0]
+  await logAudit(
+    staffId,
+    'availability.exception.create',
+    'availability',
+    staffId,
+    null,
+    { exceptionId: e.id, date: e.date, type: e.type, startTime: normalizeTime(e.start_time), endTime: normalizeTime(e.end_time) },
+    { pool },
+  )
   await createNotification(
     staffId,
     'availability.updated',
@@ -197,6 +208,7 @@ router.delete('/exceptions/:exceptionId', async (req, res) => {
     return
   }
 
+  await logAudit(staffId, 'availability.exception.delete', 'availability', staffId, { exceptionId }, null, { pool })
   await createNotification(
     staffId,
     'availability.updated',

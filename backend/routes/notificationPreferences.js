@@ -3,6 +3,7 @@ const express = require('express')
 const { getPool } = require('../db')
 const { requireUser } = require('../middleware/rbac')
 const { listNotificationPreferences, upsertNotificationPreferences } = require('../services/notifications')
+const { logAudit } = require('../services/audit')
 
 const router = express.Router()
 
@@ -21,7 +22,9 @@ router.put('/', async (req, res) => {
     return
   }
   const pool = getPool()
+  const before = await listNotificationPreferences(req.user.id, { pool })
   const preferences = await upsertNotificationPreferences(req.user.id, prefs, { pool })
+  await logAudit(req.user.id, 'notification_prefs.update', 'user', req.user.id, { preferences: before }, { preferences }, { pool })
   res.json({ preferences })
 })
 

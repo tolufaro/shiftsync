@@ -1,5 +1,6 @@
 const { getPool } = require('../db')
 const { validateAssignment } = require('./validateAssignment')
+const { logAudit } = require('./audit')
 
 async function assignStaffToShift(params, options = {}) {
   const pool = options.pool || getPool()
@@ -78,16 +79,14 @@ async function assignStaffToShift(params, options = {}) {
     )
     const assignmentId = created.rows[0].id
 
-    await client.query(
-      'insert into audit_logs (user_id, action, entity_type, entity_id, before, after) values ($1,$2,$3,$4,$5,$6)',
-      [
-        actorUserId,
-        overrideReason ? 'shift.assign.override' : 'shift.assign',
-        'shift',
-        shiftId,
-        JSON.stringify({}),
-        JSON.stringify({ assignmentId, staffId, overrideReason }),
-      ],
+    await logAudit(
+      actorUserId,
+      overrideReason ? 'shift.assign.override' : 'shift.assign',
+      'shift',
+      shiftId,
+      {},
+      { assignmentId, staffId, overrideReason },
+      { pool: client },
     )
 
     await client.query('commit')
@@ -103,4 +102,3 @@ async function assignStaffToShift(params, options = {}) {
 }
 
 module.exports = { assignStaffToShift }
-

@@ -39,6 +39,15 @@ type OnDutyRow = { staffId: string; email: string; name: string | null; shiftId:
 type ScheduleUpdatedPayload = { locationId?: string; shiftId?: string; reason?: string }
 type SwapUpdatedPayload = { locationId?: string; shiftId?: string; status?: string }
 
+type ShiftHistoryEntry = {
+  id: string
+  createdAt: string
+  action: string
+  actor: { id: string; email: string; name: string | null } | null
+  before: unknown
+  after: unknown
+}
+
 function toYmd(date: Date) {
   return date.toISOString().slice(0, 10)
 }
@@ -87,6 +96,11 @@ export default function ManagerSchedulePage() {
   const [overrideSubmitting, setOverrideSubmitting] = useState(false)
 
   const [onDuty, setOnDuty] = useState<OnDutyRow[]>([])
+
+  const [historyShiftId, setHistoryShiftId] = useState<string | null>(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState<string | null>(null)
+  const [historyEntries, setHistoryEntries] = useState<ShiftHistoryEntry[]>([])
 
   const fetchJson = useCallback(
     async <T,>(path: string, init?: RequestInit) => {
@@ -252,6 +266,24 @@ export default function ManagerSchedulePage() {
         const data = await fetchJson<PreviewResponse>(`/shifts/${shiftId}/preview?staffId=${encodeURIComponent(staffId)}`)
         setPreviewByShiftId((prev) => ({ ...prev, [shiftId]: { staffId, data } }))
       } catch {}
+    },
+    [fetchJson],
+  )
+
+  const loadHistory = useCallback(
+    async (shiftId: string) => {
+      setHistoryShiftId(shiftId)
+      setHistoryLoading(true)
+      setHistoryError(null)
+      try {
+        const data = await fetchJson<{ entries: ShiftHistoryEntry[] }>(`/shifts/${shiftId}/history`)
+        setHistoryEntries(data.entries)
+      } catch (e) {
+        setHistoryEntries([])
+        setHistoryError(e instanceof Error ? e.message : 'Failed to load history')
+      } finally {
+        setHistoryLoading(false)
+      }
     },
     [fetchJson],
   )
@@ -462,19 +494,34 @@ export default function ManagerSchedulePage() {
                       >
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
                           <div style={{ fontWeight: 700 }}>{formatTimeRange(s.startAt, s.endAt, location.timezone)}</div>
-                          <button
-                            onClick={() => toggleStatus(s)}
-                            style={{
-                              padding: '6px 8px',
-                              borderRadius: 8,
-                              border: '1px solid #111',
-                              background: '#fff',
-                              cursor: 'pointer',
-                              height: 32,
-                            }}
-                          >
-                            {s.status === 'draft' ? 'Publish' : 'Unpublish'}
-                          </button>
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            <button
+                              onClick={() => loadHistory(s.id)}
+                              style={{
+                                padding: '6px 8px',
+                                borderRadius: 8,
+                                border: '1px solid #111',
+                                background: '#fff',
+                                cursor: 'pointer',
+                                height: 32,
+                              }}
+                            >
+                              History
+                            </button>
+                            <button
+                              onClick={() => toggleStatus(s)}
+                              style={{
+                                padding: '6px 8px',
+                                borderRadius: 8,
+                                border: '1px solid #111',
+                                background: '#fff',
+                                cursor: 'pointer',
+                                height: 32,
+                              }}
+                            >
+                              {s.status === 'draft' ? 'Publish' : 'Unpublish'}
+                            </button>
+                          </div>
                         </div>
 
                         <div style={{ marginTop: 6, color: '#333' }}>
@@ -633,6 +680,74 @@ export default function ManagerSchedulePage() {
                 {overrideSubmitting ? 'Submitting...' : 'Confirm Override'}
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {historyShiftId ? (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.35)',
+            display: 'grid',
+            justifyItems: 'end',
+            alignItems: 'stretch',
+            padding: 0,
+            zIndex: 40,
+          }}
+          onClick={() => setHistoryShiftId(null)}
+        >
+          <div
+            style={{ width: '100%', maxWidth: 520, background: '#fff', padding: 16, overflowY: 'auto' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>Shift History</div>
+                <div style={{ color: '#666' }}>{historyShiftId}</div>
+              </div>
+              <button
+                onClick={() => setHistoryShiftId(null)}
+                style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #111', background: '#fff', cursor: 'pointer' }}
+              >
+                Close
+              </button>
+            </div>
+
+            {historyError ? <div style={{ marginTop: 10, color: '#b00020' }}>{historyError}</div> : null}
+            {historyLoading ? <div style={{ marginTop: 10 }}>Loading...</div> : null}
+
+            {!historyLoading ? (
+              <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
+                {historyEntries.map((e) => (
+                  <div key={e.id} style={{ border: '1px solid #e5e5e5', borderRadius: 12, padding: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
+                      <div style={{ fontWeight: 700 }}>{e.action}</div>
+                      <div style={{ color: '#666' }}>{new Date(e.createdAt).toLocaleString()}</div>
+                    </div>
+                    <div style={{ marginTop: 6, color: '#333' }}>
+                      {e.actor ? (e.actor.name ? `${e.actor.name} (${e.actor.email})` : e.actor.email) : 'System'}
+                    </div>
+                    <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
+                      <div>
+                        <div style={{ fontWeight: 700, color: '#555' }}>Before</div>
+                        <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#222' }}>
+                          {e.before ? JSON.stringify(e.before, null, 2) : ''}
+                        </pre>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 700, color: '#555' }}>After</div>
+                        <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#222' }}>
+                          {e.after ? JSON.stringify(e.after, null, 2) : ''}
+                        </pre>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {historyEntries.length === 0 ? <div style={{ color: '#666' }}>No audit entries.</div> : null}
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}

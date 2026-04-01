@@ -6,6 +6,7 @@ const { findValidAlternatives } = require('../services/findValidAlternatives')
 const { validateAssignment } = require('../services/validateAssignment')
 const { assignStaffToShift } = require('../services/assignShift')
 const { createNotification } = require('../services/notifications')
+const { logAudit } = require('../services/audit')
 
 const router = express.Router()
 
@@ -87,10 +88,7 @@ async function cancelPendingSwapsForShift(pool, shiftId, actorUserId, locationId
     await db.query('update swap_requests set status = $1::swap_request_status where id = any($2::uuid[])', ['cancelled', ids])
 
     for (const r of pending.rows) {
-      await db.query(
-        'insert into audit_logs (user_id, action, entity_type, entity_id, before, after) values ($1,$2,$3,$4,$5,$6)',
-        [actorUserId, 'swap.cancel.shift_edit', 'swap_request', r.id, JSON.stringify({}), JSON.stringify({ status: 'cancelled' })],
-      )
+      await logAudit(actorUserId, 'swap.cancel.shift_edit', 'swap_request', r.id, {}, { status: 'cancelled' }, { pool: db })
 
       await createNotification(
         r.requested_by,
@@ -388,6 +386,16 @@ router.post('/', async (req, res) => {
   )
   const r = result.rows[0]
 
+  await logAudit(req.user.id, 'shift.create', 'shift', r.id, null, {
+    locationId: r.location_id,
+    requiredSkillId: r.required_skill_id,
+    startAt: new Date(r.start_at).toISOString(),
+    endAt: new Date(r.end_at).toISOString(),
+    isPremium: Boolean(r.is_premium),
+    headcountNeeded: r.headcount_needed,
+    status: r.status,
+  })
+
   req.app.locals.realtime?.emitToLocation(r.location_id, 'schedule:updated', { locationId: r.location_id, shiftId: r.id, reason: 'shift.created' })
 
   res.status(201).json({
@@ -412,7 +420,10 @@ router.patch('/:shiftId', async (req, res) => {
   const pool = getPool()
   const shiftId = req.params.shiftId
 
-  const existing = await pool.query('select id, location_id, start_at, end_at from shifts where id = $1 limit 1', [shiftId])
+  const existing = await pool.query(
+    'select id, location_id, required_skill_id, start_at, end_at, headcount_needed, status, is_premium from shifts where id = $1 limit 1',
+    [shiftId],
+  )
   const current = existing.rows[0]
   if (!current) {
     res.status(404).json({ error: 'not_found' })
@@ -602,6 +613,32 @@ router.patch('/:shiftId', async (req, res) => {
   )
   const r = result.rows[0]
 
+  await logAudit(
+    req.user.id,
+    'shift.update',
+    'shift',
+    shiftId,
+    {
+      locationId: current.location_id,
+      requiredSkillId: current.required_skill_id,
+      startAt: new Date(current.start_at).toISOString(),
+      endAt: new Date(current.end_at).toISOString(),
+      isPremium: Boolean(current.is_premium),
+      headcountNeeded: current.headcount_needed,
+      status: current.status,
+    },
+    {
+      locationId: r.location_id,
+      requiredSkillId: r.required_skill_id,
+      startAt: new Date(r.start_at).toISOString(),
+      endAt: new Date(r.end_at).toISOString(),
+      isPremium: Boolean(r.is_premium),
+      headcountNeeded: r.headcount_needed,
+      status: r.status,
+    },
+    { pool },
+  )
+
   req.app.locals.realtime?.emitToLocation(r.location_id, 'schedule:updated', { locationId: r.location_id, shiftId: r.id, reason: 'shift.updated' })
   await notifyAssignedStaff(pool, shiftId, 'shift.updated', 'A shift you are assigned to was updated', { shiftId }, req.app.locals.realtime)
 
@@ -627,7 +664,10 @@ router.delete('/:shiftId', async (req, res) => {
   const pool = getPool()
   const shiftId = req.params.shiftId
 
-  const existing = await pool.query('select id, location_id from shifts where id = $1 limit 1', [shiftId])
+  const existing = await pool.query(
+    'select id, location_id, required_skill_id, start_at, end_at, headcount_needed, status, is_premium from shifts where id = $1 limit 1',
+    [shiftId],
+  )
   const current = existing.rows[0]
   if (!current) {
     res.status(404).json({ error: 'not_found' })
@@ -651,6 +691,23 @@ router.delete('/:shiftId', async (req, res) => {
     req.app.locals.realtime,
   )
   await cancelPendingSwapsForShift(pool, shiftId, req.user.id, current.location_id, req.app.locals.realtime)
+  await logAudit(
+    req.user.id,
+    'shift.delete',
+    'shift',
+    shiftId,
+    {
+      locationId: current.location_id,
+      requiredSkillId: current.required_skill_id,
+      startAt: new Date(current.start_at).toISOString(),
+      endAt: new Date(current.end_at).toISOString(),
+      isPremium: Boolean(current.is_premium),
+      headcountNeeded: current.headcount_needed,
+      status: current.status,
+    },
+    null,
+    { pool },
+  )
   await pool.query('delete from shifts where id = $1', [shiftId])
   req.app.locals.realtime?.emitToLocation(current.location_id, 'schedule:updated', { locationId: current.location_id, shiftId, reason: 'shift.deleted' })
   res.json({ ok: true })
@@ -694,10 +751,7 @@ router.patch('/:shiftId/status', async (req, res) => {
   await pool.query('begin')
   try {
     await pool.query('update shifts set status = $1::shift_status, updated_at = now() where id = $2', [status, shiftId])
-    await pool.query(
-      'insert into audit_logs (user_id, action, entity_type, entity_id, before, after) values ($1,$2,$3,$4,$5,$6)',
-      [req.user.id, 'shift.status', 'shift', shiftId, JSON.stringify({ status: current.status }), JSON.stringify({ status })],
-    )
+    await logAudit(req.user.id, 'shift.status', 'shift', shiftId, { status: current.status }, { status }, { pool })
     await pool.query('commit')
   } catch (e) {
     await pool.query('rollback')
@@ -755,6 +809,60 @@ router.patch('/:shiftId/status', async (req, res) => {
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     },
+  })
+})
+
+router.get('/:shiftId/history', async (req, res) => {
+  const pool = getPool()
+  const shiftId = req.params.shiftId
+
+  const shiftResult = await pool.query('select id, location_id from shifts where id = $1 limit 1', [shiftId])
+  const shift = shiftResult.rows[0]
+  if (!shift) {
+    res.status(404).json({ error: 'not_found' })
+    return
+  }
+
+  if (req.user.role === 'manager') {
+    const ok = await ensureManagerLocationAccess(pool, req.user.id, shift.location_id)
+    if (!ok) {
+      res.status(403).json({ error: 'forbidden' })
+      return
+    }
+  }
+
+  const result = await pool.query(
+    `
+      select
+        a.id,
+        a.created_at,
+        a.action,
+        a.entity_type,
+        a.entity_id,
+        a.before,
+        a.after,
+        u.id as actor_id,
+        u.email as actor_email,
+        u.name as actor_name
+      from audit_logs a
+      left join users u on u.id = a.user_id
+      where a.entity_type = 'shift' and a.entity_id = $1::uuid
+      order by a.created_at asc
+      limit 500
+    `,
+    [shiftId],
+  )
+
+  res.json({
+    shiftId,
+    entries: result.rows.map((r) => ({
+      id: r.id,
+      createdAt: r.created_at,
+      action: r.action,
+      actor: r.actor_id ? { id: r.actor_id, email: r.actor_email, name: r.actor_name } : null,
+      before: r.before,
+      after: r.after,
+    })),
   })
 })
 

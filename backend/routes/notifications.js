@@ -2,6 +2,7 @@ const express = require('express')
 
 const { getPool } = require('../db')
 const { requireUser } = require('../middleware/rbac')
+const { logAudit } = require('../services/audit')
 
 const router = express.Router()
 
@@ -64,6 +65,7 @@ router.patch('/:notificationId/read', async (req, res) => {
     res.status(404).json({ error: 'not_found' })
     return
   }
+  await logAudit(userId, 'notification.read', 'notification', id, null, { read: true }, { pool })
   res.json({ ok: true })
 })
 
@@ -71,6 +73,7 @@ router.post('/read-all', async (req, res) => {
   const pool = getPool()
   const userId = req.user.id
   await pool.query('update notifications set read = true where user_id = $1 and read = false', [userId])
+  await logAudit(userId, 'notification.read_all', 'notification', null, null, { readAll: true }, { pool })
   res.json({ ok: true })
 })
 

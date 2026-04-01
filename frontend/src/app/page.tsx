@@ -112,6 +112,7 @@ export default function Home() {
           {user.role === 'admin' || user.role === 'manager' ? <Link href="/manager/approvals">Manager Approvals</Link> : null}
           {user.role === 'admin' || user.role === 'manager' ? <Link href="/manager/analytics">Fairness Analytics</Link> : null}
           {user.role === 'admin' ? <Link href="/admin/users">Admin: User Management</Link> : null}
+          {user.role === 'admin' ? <Link href="/admin/audit">Admin: Audit Export</Link> : null}
           <button
             onClick={logout}
             style={{

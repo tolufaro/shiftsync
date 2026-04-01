@@ -5,6 +5,7 @@ const { requireRole, requireUser } = require('../middleware/rbac')
 const { validateAssignment } = require('../services/validateAssignment')
 const { findValidAlternatives } = require('../services/findValidAlternatives')
 const { createNotification } = require('../services/notifications')
+const { logAudit } = require('../services/audit')
 
 const router = express.Router()
 
@@ -118,10 +119,7 @@ router.post('/drop', ...requireRole(['staff']), async (req, res) => {
       [assignmentId, staffId, 'drop', 'pending_manager_approval', expiresAt],
     )
 
-    await pool.query(
-      'insert into audit_logs (user_id, action, entity_type, entity_id, before, after) values ($1,$2,$3,$4,$5,$6)',
-      [staffId, 'swap.drop.request', 'swap_request', created.rows[0].id, JSON.stringify({}), JSON.stringify({ assignmentId })],
-    )
+    await logAudit(staffId, 'swap.drop.request', 'swap_request', created.rows[0].id, {}, { assignmentId }, { pool })
 
     await pool.query('commit')
     const swap = created.rows[0]
@@ -279,16 +277,14 @@ router.post('/request', ...requireRole(['staff']), async (req, res) => {
       { pool, realtime: req.app.locals.realtime },
     )
 
-    await pool.query(
-      'insert into audit_logs (user_id, action, entity_type, entity_id, before, after) values ($1,$2,$3,$4,$5,$6)',
-      [
-        staffA,
-        'swap.request',
-        'swap_request',
-        created.rows[0].id,
-        JSON.stringify({}),
-        JSON.stringify({ assignmentId, targetStaffId, targetAssignmentId }),
-      ],
+    await logAudit(
+      staffA,
+      'swap.request',
+      'swap_request',
+      created.rows[0].id,
+      {},
+      { assignmentId, targetStaffId, targetAssignmentId: targetAssignmentId || null },
+      { pool },
     )
 
     await pool.query('commit')
@@ -372,17 +368,7 @@ router.patch('/:swapId/respond', ...requireRole(['staff']), async (req, res) => 
       { swapRequestId: swapId },
       { pool, realtime: req.app.locals.realtime },
     )
-    await pool.query(
-      'insert into audit_logs (user_id, action, entity_type, entity_id, before, after) values ($1,$2,$3,$4,$5,$6)',
-      [
-        staffId,
-        'swap.respond',
-        'swap_request',
-        swapId,
-        JSON.stringify({ status: swap.status }),
-        JSON.stringify({ status: nextStatus, response }),
-      ],
-    )
+    await logAudit(staffId, 'swap.respond', 'swap_request', swapId, { status: swap.status }, { status: nextStatus, response }, { pool })
     await pool.query('commit')
   } catch (e) {
     await pool.query('rollback')
@@ -548,10 +534,7 @@ router.patch('/:swapId/approve', ...requireRole(['admin', 'manager']), async (re
     await pool.query('begin')
     try {
       await pool.query('update swap_requests set status = $1::swap_request_status where id = $2', ['rejected', swapId])
-      await pool.query(
-        'insert into audit_logs (user_id, action, entity_type, entity_id, before, after) values ($1,$2,$3,$4,$5,$6)',
-        [req.user.id, 'swap.manager.deny', 'swap_request', swapId, JSON.stringify({ status: swap.status }), JSON.stringify({ status: 'rejected' })],
-      )
+      await logAudit(req.user.id, 'swap.manager.deny', 'swap_request', swapId, { status: swap.status }, { status: 'rejected' }, { pool })
 
       await createNotification(
         swap.requested_by,
@@ -664,10 +647,7 @@ router.patch('/:swapId/approve', ...requireRole(['admin', 'manager']), async (re
 
     await pool.query('update swap_requests set status = $1::swap_request_status where id = $2', ['approved', swapId])
 
-    await pool.query(
-      'insert into audit_logs (user_id, action, entity_type, entity_id, before, after) values ($1,$2,$3,$4,$5,$6)',
-      [req.user.id, 'swap.manager.approve', 'swap_request', swapId, JSON.stringify({ status: swap.status }), JSON.stringify({ status: 'approved' })],
-    )
+    await logAudit(req.user.id, 'swap.manager.approve', 'swap_request', swapId, { status: swap.status }, { status: 'approved' }, { pool })
 
     await createNotification(
       swap.requested_by,

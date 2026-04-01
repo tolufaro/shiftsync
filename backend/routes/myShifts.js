@@ -4,6 +4,7 @@ const { getPool } = require('../db')
 const { requireRole } = require('../middleware/rbac')
 const { validateAssignment } = require('../services/validateAssignment')
 const { createNotification } = require('../services/notifications')
+const { logAudit } = require('../services/audit')
 
 const router = express.Router()
 
@@ -161,10 +162,7 @@ router.post('/:shiftId/claim', async (req, res) => {
     )
     assignmentId = created.rows[0].id
 
-    await pool.query(
-      'insert into audit_logs (user_id, action, entity_type, entity_id, before, after) values ($1,$2,$3,$4,$5,$6)',
-      [staffId, 'shift.claim', 'shift', shiftId, JSON.stringify({}), JSON.stringify({ assignmentId: created.rows[0].id })],
-    )
+    await logAudit(staffId, 'shift.claim', 'shift', shiftId, {}, { assignmentId: created.rows[0].id }, { pool })
 
     await pool.query('commit')
   } catch (e) {
