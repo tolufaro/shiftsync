@@ -73,7 +73,7 @@ export default function AdminAuditExportPage() {
     <div className="container" style={{ maxWidth: 960 }}>
       <div className="rowBetween">
         <h1 className="pageTitle" style={{ margin: 0 }}>
-          Admin — Audit Export
+          Admin - Audit Export
         </h1>
         <Link href="/" className="btn">
           Home
