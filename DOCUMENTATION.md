@@ -121,7 +121,6 @@ npm run dev
 - **UI is intentionally lightweight**: no component library; styling uses shared CSS utilities in `globals.css`.
 - **Browser timezone list**: the timezone dropdown uses `Intl.supportedValuesOf('timeZone')` when available; older browsers fall back to a free-text input.
 
-## Ambiguity Decisions (Explicit Behavior)
 
 ### Timezones & DST
 
