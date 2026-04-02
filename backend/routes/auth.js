@@ -13,9 +13,10 @@ function normalizeEmail(email) {
 
 function getCookieOptions() {
   const isProd = process.env.NODE_ENV === 'production'
+  const sameSite = process.env.COOKIE_SAMESITE ? String(process.env.COOKIE_SAMESITE).toLowerCase() : isProd ? 'none' : 'lax'
   return {
     httpOnly: true,
-    sameSite: 'lax',
+    sameSite,
     secure: isProd,
     path: '/',
   }

@@ -6,8 +6,11 @@ function createPool() {
   const databaseUrl = process.env.DATABASE_URL
   if (!databaseUrl) return null
 
+  const sslEnabled = process.env.DATABASE_SSL === 'true' || process.env.PGSSLMODE === 'require'
+
   return new Pool({
     connectionString: databaseUrl,
+    ssl: sslEnabled ? { rejectUnauthorized: false } : undefined,
   })
 }
 
