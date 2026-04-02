@@ -138,7 +138,7 @@ npm run dev
 - **Assignment concurrency**: assignment creation locks the shift row (`SELECT ... FOR UPDATE`) and checks headcount inside the transaction. When headcount is already met, it returns `headcount_full`.
 - **Overtime / rest / double-booking**: the validator returns blocking vs warning violations. Manager override is required for overrideable blocks (e.g., 7th consecutive day), and the UI prompts for an override reason.
 - **Edit cutoff**: schedule publish/unpublish and shift edits/deletes are blocked within `SHIFT_EDIT_CUTOFF_HOURS` of the shift start (default: 48 hours).
-- **Last-minute coverage**: assignment changes can be made up until the shift start time; swap/drop requests expire 24 hours before the shift.
+- **Last-minute coverage**: assignment changes can be made up until the shift start time; swap/drop requests and approvals are locked within 24 hours of the shift start.
   - Managers can remove a staff member from a shift from the manager schedule UI, which marks the assignment as dropped and notifies certified staff at that location about the open shift.
 
 ### Notifications

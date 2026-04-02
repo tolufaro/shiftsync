@@ -21,7 +21,8 @@ function isIsoDate(value) {
 function isShiftEditable(shiftStartAt) {
   const start = shiftStartAt instanceof Date ? shiftStartAt : new Date(shiftStartAt)
   if (Number.isNaN(start.getTime())) return false
-  return start.getTime() > Date.now()
+  const cutoffMs = 24 * 60 * 60 * 1000
+  return start.getTime() > Date.now() + cutoffMs
 }
 
 async function ensureManagerLocationAccess(pool, userId, locationId) {

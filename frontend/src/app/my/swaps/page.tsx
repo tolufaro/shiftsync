@@ -68,7 +68,8 @@ export default function MySwapsPage() {
       await fetchJson(`/swaps/${swapId}/cancel`, { method: 'POST' })
       await load()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Cancel failed')
+      const msg = e instanceof Error ? e.message : 'Cancel failed'
+      setError(msg === 'cutoff_reached' ? 'Too close to shift start: swap/drop changes are locked within 24 hours of the shift.' : msg)
     } finally {
       setActing((p) => ({ ...p, [swapId]: false }))
     }
@@ -85,7 +86,8 @@ export default function MySwapsPage() {
       })
       await load()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Action failed')
+      const msg = e instanceof Error ? e.message : 'Action failed'
+      setError(msg === 'cutoff_reached' ? 'Too close to shift start: swap/drop changes are locked within 24 hours of the shift.' : msg)
     } finally {
       setActing((p) => ({ ...p, [swapId]: false }))
     }
@@ -188,4 +190,3 @@ export default function MySwapsPage() {
     </div>
   )
 }
-
