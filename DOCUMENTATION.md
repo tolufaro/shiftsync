@@ -147,3 +147,21 @@ npm run dev
 - **Audit records are written for mutations** via a reusable `logAudit(...)` helper and are used to power the shift history panel.
 - **Shift history view**: manager schedule “History” shows audit entries where `entity_type = 'shift'` and `entity_id = <shiftId>`.
 
+## Intentional Ambiguities (Chosen Behavior)
+
+These items were deliberately unspecified; the system’s current behavior is:
+
+- **De-certifying staff from a location**
+  - Removing a staff→location link affects future operations only: it blocks new assignments/manager access for that location (location certification check).
+  - Existing historical records remain unchanged (past shifts/assignments/audit history are preserved).
+- **Desired hours vs availability**
+  - Availability is a hard constraint for assignment validation.
+  - Desired weekly hours are treated as a soft planning signal used in analytics/fairness reporting only; they do not override availability or constraints.
+- **Consecutive days (short vs long shifts)**
+  - Any non-zero work on a calendar day counts as a “worked day” for consecutive-day streaks; duration does not change the streak calculation.
+- **Shift edited around swap approval**
+  - If a shift is edited while a swap/drop request is still pending, the pending request is cancelled to avoid approving a stale swap against changed shift details.
+  - If the swap has already been manager-approved, the assignment change is immediate; later shift edits just affect whoever is now assigned.
+- **Locations near timezone boundaries**
+  - Each location uses a single IANA timezone (`locations.timezone`). Boundary-spanning locations are not modeled; the operator must choose the canonical timezone for that location.
+
