@@ -27,7 +27,11 @@ function toDateOnly(date) {
 }
 
 async function main() {
-  const pool = new Pool({ connectionString: requireEnv('DATABASE_URL') })
+  const sslEnabled = process.env.DATABASE_SSL === 'true' || process.env.PGSSLMODE === 'require'
+  const pool = new Pool({
+    connectionString: requireEnv('DATABASE_URL'),
+    ssl: sslEnabled ? { rejectUnauthorized: false } : undefined,
+  })
 
   const locations = [
     { name: 'LA Downtown', address: '101 Main St, Los Angeles, CA', timezone: 'America/Los_Angeles' },
@@ -275,4 +279,3 @@ main().catch((e) => {
   console.error(e)
   process.exit(1)
 })
-
