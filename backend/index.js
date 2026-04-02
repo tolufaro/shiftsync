@@ -40,8 +40,8 @@ app.get('/health', async (_req, res) => {
 
     await pool.query('select 1')
     res.json({ ok: true, db: { ok: true } })
-  } catch (_e) {
-    res.status(503).json({ ok: false, db: { ok: false } })
+  } catch (e) {
+    res.status(503).json({ ok: false, db: { ok: false, reason: e instanceof Error ? e.message : 'db_error' } })
   }
 })
 
