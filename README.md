@@ -57,6 +57,3 @@ Open: `http://localhost:3000`
 
 See [DOCUMENTATION.md](file:///C:/workspace/shiftsync/DOCUMENTATION.md#demo-login-credentials).
 
-## Notes
-
-- If you see `EADDRINUSE: :::3001`, another process is using port 3001. Stop it or set `PORT` to a different value.
