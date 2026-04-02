@@ -1,5 +1,8 @@
 'use client'
 
+'use client'
+
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 
@@ -39,47 +42,55 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{ maxWidth: 420, margin: '40px auto', padding: 16 }}>
-      <h1 style={{ marginBottom: 12 }}>Login</h1>
-      <form onSubmit={onSubmit} style={{ display: 'grid', gap: 12 }}>
-        <label style={{ display: 'grid', gap: 6 }}>
-          <span>Email</span>
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            type="email"
-            required
-            autoComplete="email"
-            style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
-          />
-        </label>
-        <label style={{ display: 'grid', gap: 6 }}>
-          <span>Password</span>
-          <input
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            type="password"
-            required
-            autoComplete="current-password"
-            style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
-          />
-        </label>
-        {error ? <div style={{ color: '#b00020' }}>{error}</div> : null}
-        <button
-          type="submit"
-          disabled={submitting}
-          style={{
-            padding: 10,
-            borderRadius: 8,
-            border: '1px solid #111',
-            background: '#111',
-            color: '#fff',
-            cursor: 'pointer',
-          }}
-        >
-          {submitting ? 'Logging in...' : 'Login'}
-        </button>
-      </form>
+    <div className="container" style={{ maxWidth: 520 }}>
+      <div className="rowBetween">
+        <h1 className="pageTitle" style={{ margin: 0 }}>
+          Login
+        </h1>
+        <Link href="/" className="btn">
+          Home
+        </Link>
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="cardBody stack">
+          {error ? (
+            <div className="card" style={{ borderColor: 'color-mix(in srgb, var(--danger) 35%, var(--border))' }}>
+              <div className="cardBody" style={{ color: 'var(--danger)' }}>
+                {error}
+              </div>
+            </div>
+          ) : null}
+
+          <form onSubmit={onSubmit} className="stack">
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span style={{ fontWeight: 700 }}>Email</span>
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                required
+                autoComplete="email"
+                className="input"
+              />
+            </label>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span style={{ fontWeight: 700 }}>Password</span>
+              <input
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                type="password"
+                required
+                autoComplete="current-password"
+                className="input"
+              />
+            </label>
+            <button type="submit" disabled={submitting} className="btn btnPrimary" style={{ width: '100%' }}>
+              {submitting ? 'Logging in...' : 'Login'}
+            </button>
+          </form>
+        </div>
+      </div>
     </div>
   )
 }

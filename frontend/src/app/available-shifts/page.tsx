@@ -67,51 +67,62 @@ export default function AvailableShiftsPage() {
 
   return (
     <div className="container" style={{ maxWidth: 960 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-        <h1 style={{ margin: 0 }}>Available Shifts</h1>
-        <Link href="/">Home</Link>
+      <div className="rowBetween">
+        <h1 className="pageTitle" style={{ margin: 0 }}>
+          Available Shifts
+        </h1>
+        <Link href="/" className="btn">
+          Home
+        </Link>
       </div>
 
-      {error ? <div style={{ marginTop: 12, color: '#b00020' }}>{error}</div> : null}
-      {loading ? <div style={{ marginTop: 12 }}>Loading...</div> : null}
+      <div className="card" style={{ marginTop: 12 }}>
+        <div className="cardBody rowBetween" style={{ alignItems: 'center' }}>
+          <div className="muted">Times are displayed in each shift’s location timezone.</div>
+          <span className="badge">Timezone-aware</span>
+        </div>
+      </div>
+
+      {error ? (
+        <div className="card" style={{ marginTop: 12, borderColor: 'color-mix(in srgb, var(--danger) 35%, var(--border))' }}>
+          <div className="cardBody" style={{ color: 'var(--danger)' }}>
+            {error}
+          </div>
+        </div>
+      ) : null}
+      {loading ? (
+        <div style={{ marginTop: 12 }} className="muted">
+          Loading...
+        </div>
+      ) : null}
 
       {!loading ? (
-        <div style={{ marginTop: 16, display: 'grid', gap: 10 }}>
+        <div style={{ marginTop: 16 }} className="stack">
           {shifts.map((s) => (
-            <div key={s.id} style={{ padding: 12, border: '1px solid #e5e5e5', borderRadius: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                <div style={{ fontWeight: 700 }}>{formatDayLabel(s.startAt, s.location.timezone)}</div>
-                <div style={{ color: '#555' }}>
-                  {s.filled}/{s.headcountNeeded} filled
+            <div key={s.id} className="card">
+              <div className="cardBody">
+                <div className="rowBetween">
+                  <div style={{ fontWeight: 800 }}>{formatDayLabel(s.startAt, s.location.timezone)}</div>
+                  <span className="badge">
+                    {s.filled}/{s.headcountNeeded} filled
+                  </span>
                 </div>
-              </div>
-              <div style={{ marginTop: 6 }}>
-                <div style={{ fontSize: 18, fontWeight: 700 }}>{formatTimeRange(s.startAt, s.endAt, s.location.timezone)}</div>
-                <div style={{ marginTop: 4, color: '#333' }}>
-                  Location: <strong>{s.location.name}</strong> <span style={{ color: '#666' }}>({s.location.timezone})</span>
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ fontSize: 18, fontWeight: 800 }}>{formatTimeRange(s.startAt, s.endAt, s.location.timezone)}</div>
+                  <div style={{ marginTop: 4 }}>
+                    Location: <strong>{s.location.name}</strong> <span className="muted">({s.location.timezone})</span>
+                  </div>
+                  {s.requiredSkill ? <div>Role: {s.requiredSkill.name}</div> : null}
                 </div>
-                {s.requiredSkill ? <div style={{ color: '#333' }}>Role: {s.requiredSkill.name}</div> : null}
-              </div>
-              <div style={{ marginTop: 10 }}>
-                <button
-                  onClick={() => claim(s.id)}
-                  disabled={Boolean(claiming[s.id])}
-                  style={{
-                    width: 140,
-                    padding: 10,
-                    borderRadius: 8,
-                    border: '1px solid #111',
-                    background: '#111',
-                    color: '#fff',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {claiming[s.id] ? 'Claiming...' : 'Claim'}
-                </button>
+                <div style={{ marginTop: 12 }}>
+                  <button onClick={() => claim(s.id)} disabled={Boolean(claiming[s.id])} className="btn btnPrimary" style={{ width: 160 }}>
+                    {claiming[s.id] ? 'Claiming...' : 'Claim'}
+                  </button>
+                </div>
               </div>
             </div>
           ))}
-          {shifts.length === 0 ? <div style={{ color: '#555' }}>No available shifts you qualify for.</div> : null}
+          {shifts.length === 0 ? <div className="muted">No available shifts you qualify for.</div> : null}
         </div>
       ) : null}
     </div>

@@ -367,21 +367,38 @@ export default function ManagerSchedulePage() {
 
   return (
     <div className="container" style={{ maxWidth: 1200 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-        <h1 style={{ margin: 0 }}>Manager Schedule</h1>
-        <Link href="/">Home</Link>
+      <div className="rowBetween">
+        <h1 className="pageTitle" style={{ margin: 0 }}>
+          Manager Schedule
+        </h1>
+        <Link href="/" className="btn">
+          Home
+        </Link>
       </div>
 
-      {me ? <div style={{ marginTop: 8, color: '#555' }}>Signed in as {me.email}</div> : null}
-      {error ? <div style={{ marginTop: 12, color: '#b00020' }}>{error}</div> : null}
+      {me ? (
+        <div style={{ marginTop: 10 }} className="row">
+          <span className="badge">Manager</span>
+          <span className="muted">Signed in as {me.email}</span>
+        </div>
+      ) : null}
 
-      <div style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+      {error ? (
+        <div className="card" style={{ marginTop: 12, borderColor: 'color-mix(in srgb, var(--danger) 35%, var(--border))' }}>
+          <div className="cardBody" style={{ color: 'var(--danger)' }}>
+            {error}
+          </div>
+        </div>
+      ) : null}
+
+      <div style={{ marginTop: 16 }} className="row">
         <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span>Location</span>
           <select
             value={locationId}
             onChange={(e) => setLocationId(e.target.value)}
-            style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
+            className="select"
+            style={{ width: 280 }}
           >
             {locations.map((l) => (
               <option key={l.id} value={l.id}>
@@ -397,38 +414,32 @@ export default function ManagerSchedulePage() {
             type="date"
             value={weekStart}
             onChange={(e) => setWeekStart(e.target.value)}
-            style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
+            className="input"
+            style={{ width: 200 }}
           />
         </label>
 
-        <button
-          onClick={loadSchedule}
-          style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #111', background: '#fff', cursor: 'pointer' }}
-        >
+        <button onClick={loadSchedule} className="btn">
           Refresh
         </button>
 
-        <div style={{ color: '#555' }}>
-          {location ? (
-            <span>
-              Timezone: <strong>{location.timezone}</strong>
-            </span>
-          ) : null}
-        </div>
-        <div style={{ color: '#555' }}>{staffLoading ? 'Loading staff...' : null}</div>
+        {location ? <span className="badge">Timezone: {location.timezone}</span> : null}
+        {staffLoading ? <span className="muted">Loading staff...</span> : null}
       </div>
 
-      {loading ? <div style={{ marginTop: 12 }}>Loading...</div> : null}
+      {loading ? (
+        <div style={{ marginTop: 12 }} className="muted">
+          Loading...
+        </div>
+      ) : null}
 
       {!loading && location ? (
         <div style={{ marginTop: 16, display: 'grid', gap: 16 }}>
-          <div style={{ padding: 12, border: '1px solid #e5e5e5', borderRadius: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
+          <div className="card">
+            <div className="cardBody">
+            <div className="rowBetween">
               <h2 style={{ margin: 0 }}>On Duty Now</h2>
-              <button
-                onClick={loadOnDuty}
-                style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #111', background: '#fff', cursor: 'pointer' }}
-              >
+              <button onClick={loadOnDuty} className="btn btnSmall">
                 Refresh
               </button>
             </div>
@@ -439,13 +450,15 @@ export default function ManagerSchedulePage() {
                   <div style={{ color: '#555' }}>{formatTimeRange(r.startAt, r.endAt, location.timezone)}</div>
                 </div>
               ))}
-              {onDuty.length === 0 ? <div style={{ color: '#777' }}>No one currently on duty.</div> : null}
+              {onDuty.length === 0 ? <div className="muted">No one currently on duty.</div> : null}
+            </div>
             </div>
           </div>
 
-          <div style={{ padding: 12, border: '1px solid #e5e5e5', borderRadius: 12 }}>
-            <h2 style={{ margin: '0 0 10px 0' }}>Projected Weekly Hours</h2>
-            <div style={{ display: 'grid', gap: 8 }}>
+          <div className="card">
+            <div className="cardBody">
+              <h2 style={{ margin: '0 0 10px 0' }}>Projected Weekly Hours</h2>
+              <div style={{ display: 'grid', gap: 8 }}>
               {staff.map((st) => {
                 const hours = hoursByStaff.get(st.id) || 0
                 const pct = Math.min(100, (hours / maxHours) * 100)
@@ -460,6 +473,7 @@ export default function ManagerSchedulePage() {
                   </div>
                 )
               })}
+              </div>
             </div>
           </div>
 
@@ -570,10 +584,10 @@ export default function ManagerSchedulePage() {
                                 Weekly: {Number(overtime.weeklyHoursBefore).toFixed(1)}h → {Number(overtime.weeklyHoursAfter).toFixed(1)}h
                               </div>
                             ) : (
-                              <div style={{ color: '#555' }}>Preview unavailable</div>
+                              <div className="muted">Preview unavailable</div>
                             )}
                             {violations?.some((v) => v.severity === 'warning') ? (
-                              <div style={{ marginTop: 4, color: '#b38900' }}>
+                              <div style={{ marginTop: 4, color: 'var(--warning)' }}>
                                 {violations
                                   .filter((v) => v.severity === 'warning' && v.message)
                                   .map((v) => v.message)
@@ -581,7 +595,7 @@ export default function ManagerSchedulePage() {
                               </div>
                             ) : null}
                             {violations?.some((v) => v.severity === 'block') ? (
-                              <div style={{ marginTop: 4, color: '#b00020' }}>
+                              <div style={{ marginTop: 4, color: 'var(--danger)' }}>
                                 {violations
                                   .filter((v) => v.severity === 'block' && v.message)
                                   .map((v) => v.message)
@@ -593,15 +607,15 @@ export default function ManagerSchedulePage() {
 
                         {fb ? (
                           <div style={{ marginTop: 10 }}>
-                            {fb.ok ? <div style={{ color: '#0b6b2b' }}>Assigned</div> : null}
-                            {!fb.ok ? <div style={{ color: '#b00020' }}>{fb.message}</div> : null}
+                            {fb.ok ? <div style={{ color: 'var(--success)' }}>Assigned</div> : null}
+                            {!fb.ok ? <div style={{ color: 'var(--danger)' }}>{fb.message}</div> : null}
                             {!fb.ok && fb.validation?.violations?.length ? (
-                              <div style={{ marginTop: 6, color: '#555' }}>
+                              <div style={{ marginTop: 6 }} className="muted">
                                 Violations: {fb.validation.violations.map((v) => v.code).join(', ')}
                               </div>
                             ) : null}
                             {!fb.ok && fb.alternatives?.length ? (
-                              <div style={{ marginTop: 6, color: '#555' }}>
+                              <div style={{ marginTop: 6 }} className="muted">
                                 Alternatives: {fb.alternatives.map((a) => a.name || a.email).join(', ')}
                               </div>
                             ) : null}
@@ -610,7 +624,7 @@ export default function ManagerSchedulePage() {
                       </div>
                     )
                   })}
-                  {dayShifts.length === 0 ? <div style={{ color: '#777' }}>No shifts</div> : null}
+                  {dayShifts.length === 0 ? <div className="muted">No shifts</div> : null}
                 </div>
               )
             })}
@@ -688,47 +702,55 @@ export default function ManagerSchedulePage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
               <div>
                 <div style={{ fontSize: 18, fontWeight: 700 }}>Shift History</div>
-                <div style={{ color: '#666' }}>{historyShiftId}</div>
+                <div className="muted">{historyShiftId}</div>
               </div>
               <button
                 onClick={() => setHistoryShiftId(null)}
-                style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #111', background: '#fff', cursor: 'pointer' }}
+                className="btn btnSmall"
               >
                 Close
               </button>
             </div>
 
-            {historyError ? <div style={{ marginTop: 10, color: '#b00020' }}>{historyError}</div> : null}
-            {historyLoading ? <div style={{ marginTop: 10 }}>Loading...</div> : null}
+            {historyError ? (
+              <div className="card" style={{ marginTop: 10, borderColor: 'color-mix(in srgb, var(--danger) 35%, var(--border))' }}>
+                <div className="cardBody" style={{ color: 'var(--danger)' }}>
+                  {historyError}
+                </div>
+              </div>
+            ) : null}
+            {historyLoading ? <div style={{ marginTop: 10 }} className="muted">Loading...</div> : null}
 
             {!historyLoading ? (
               <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
                 {historyEntries.map((e) => (
-                  <div key={e.id} style={{ border: '1px solid #e5e5e5', borderRadius: 12, padding: 12 }}>
+                  <div key={e.id} className="card" style={{ boxShadow: 'none' }}>
+                    <div className="cardBody">
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline' }}>
                       <div style={{ fontWeight: 700 }}>{e.action}</div>
-                      <div style={{ color: '#666' }}>{new Date(e.createdAt).toLocaleString()}</div>
+                      <div className="muted">{new Date(e.createdAt).toLocaleString()}</div>
                     </div>
                     <div style={{ marginTop: 6, color: '#333' }}>
                       {e.actor ? (e.actor.name ? `${e.actor.name} (${e.actor.email})` : e.actor.email) : 'System'}
                     </div>
                     <div style={{ marginTop: 10, display: 'grid', gap: 10 }}>
                       <div>
-                        <div style={{ fontWeight: 700, color: '#555' }}>Before</div>
+                        <div style={{ fontWeight: 800 }} className="muted">Before</div>
                         <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#222' }}>
                           {e.before ? JSON.stringify(e.before, null, 2) : ''}
                         </pre>
                       </div>
                       <div>
-                        <div style={{ fontWeight: 700, color: '#555' }}>After</div>
+                        <div style={{ fontWeight: 800 }} className="muted">After</div>
                         <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: '#222' }}>
                           {e.after ? JSON.stringify(e.after, null, 2) : ''}
                         </pre>
                       </div>
                     </div>
+                    </div>
                   </div>
                 ))}
-                {historyEntries.length === 0 ? <div style={{ color: '#666' }}>No audit entries.</div> : null}
+                {historyEntries.length === 0 ? <div className="muted">No audit entries.</div> : null}
               </div>
             ) : null}
           </div>

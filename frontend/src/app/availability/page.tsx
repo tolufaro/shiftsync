@@ -20,6 +20,7 @@ type AvailabilityException = {
 }
 
 type Me = { id: string; email: string; role?: string }
+type ProfileUser = { homeTimeZone: string }
 
 const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
@@ -27,6 +28,7 @@ export default function AvailabilityPage() {
   const apiUrl = useMemo(() => process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001', [])
 
   const [me, setMe] = useState<Me | null>(null)
+  const [homeTimeZone, setHomeTimeZone] = useState<string>('UTC')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -57,10 +59,13 @@ export default function AvailabilityPage() {
     setLoading(true)
     setError(null)
     try {
-      const meData = await fetchJson<{ user: Me }>('/auth/me')
+      const [meData, profileData, data] = await Promise.all([
+        fetchJson<{ user: Me }>('/auth/me'),
+        fetchJson<{ user: ProfileUser }>('/me/profile'),
+        fetchJson<{ windows: AvailabilityWindow[]; exceptions: AvailabilityException[] }>('/me/availability'),
+      ])
       setMe(meData.user)
-
-      const data = await fetchJson<{ windows: AvailabilityWindow[]; exceptions: AvailabilityException[] }>('/me/availability')
+      setHomeTimeZone(profileData.user.homeTimeZone || 'UTC')
 
       const nextWeekly = Array.from({ length: 7 }, () => ({ enabled: false, startTime: '09:00', endTime: '17:00' }))
       for (const w of data.windows) {
@@ -133,180 +138,159 @@ export default function AvailabilityPage() {
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: '40px auto', padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-        <h1 style={{ margin: 0 }}>Availability</h1>
-        <div style={{ display: 'flex', gap: 12 }}>
-          <Link href="/">Home</Link>
+    <div className="container" style={{ maxWidth: 1000 }}>
+      <div className="rowBetween">
+        <h1 className="pageTitle" style={{ margin: 0 }}>
+          Availability
+        </h1>
+        <Link href="/" className="btn">
+          Home
+        </Link>
+      </div>
+
+      {me ? (
+        <div style={{ marginTop: 10 }} className="row">
+          <span className="badge">Staff</span>
+          <span className="muted">Signed in as {me.email}</span>
+        </div>
+      ) : null}
+
+      <div className="card" style={{ marginTop: 14 }}>
+        <div className="cardBody rowBetween" style={{ alignItems: 'center' }}>
+          <div className="muted">
+            Availability times are interpreted in your home timezone: <strong>{homeTimeZone}</strong>.
+          </div>
+          <Link href="/settings/timezone" className="btn btnSmall">
+            Change timezone
+          </Link>
         </div>
       </div>
 
-      {me ? <div style={{ marginTop: 8, color: '#555' }}>Signed in as {me.email}</div> : null}
-
-      {error ? <div style={{ marginTop: 12, color: '#b00020' }}>{error}</div> : null}
-      {loading ? <div style={{ marginTop: 12 }}>Loading...</div> : null}
+      {error ? (
+        <div className="card" style={{ marginTop: 12, borderColor: 'color-mix(in srgb, var(--danger) 35%, var(--border))' }}>
+          <div className="cardBody" style={{ color: 'var(--danger)' }}>
+            {error}
+          </div>
+        </div>
+      ) : null}
+      {loading ? (
+        <div className="muted" style={{ marginTop: 12 }}>
+          Loading...
+        </div>
+      ) : null}
 
       {!loading ? (
-        <div style={{ display: 'grid', gap: 16, marginTop: 16 }}>
-          <div style={{ padding: 12, border: '1px solid #e5e5e5', borderRadius: 12 }}>
-            <h2 style={{ margin: '0 0 10px 0' }}>Weekly Recurring Availability</h2>
-            <div style={{ display: 'grid', gap: 10 }}>
-              {weekly.map((w, i) => (
-                <div key={i} style={{ display: 'grid', gridTemplateColumns: '90px 1fr 1fr', gap: 10, alignItems: 'center' }}>
-                  <label style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+        <div className="stack" style={{ marginTop: 16 }}>
+          <div className="card">
+            <div className="cardBody">
+              <div className="rowBetween">
+                <h2 style={{ margin: 0 }}>Weekly Recurring Availability</h2>
+                <button onClick={saveWeekly} className="btn btnPrimary">
+                  Save Weekly
+                </button>
+              </div>
+
+              <div className="muted" style={{ marginTop: 8 }}>
+                Overnight windows are allowed (e.g. 22:00–06:00).
+              </div>
+
+              <div style={{ marginTop: 12, display: 'grid', gap: 10 }}>
+                {weekly.map((w, i) => (
+                  <div key={i} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                    <label style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 90 }}>
+                      <input
+                        type="checkbox"
+                        checked={w.enabled}
+                        onChange={(e) =>
+                          setWeekly((prev) => {
+                            const next = prev.slice()
+                            next[i] = { ...next[i], enabled: e.target.checked }
+                            return next
+                          })
+                        }
+                      />
+                      <span style={{ fontWeight: 800 }}>{dayNames[i]}</span>
+                    </label>
                     <input
-                      type="checkbox"
-                      checked={w.enabled}
+                      type="time"
+                      value={w.startTime}
+                      disabled={!w.enabled}
                       onChange={(e) =>
                         setWeekly((prev) => {
                           const next = prev.slice()
-                          next[i] = { ...next[i], enabled: e.target.checked }
+                          next[i] = { ...next[i], startTime: e.target.value }
                           return next
                         })
                       }
+                      className="input"
+                      style={{ width: 160, opacity: w.enabled ? 1 : 0.6 }}
                     />
-                    <span>{dayNames[i]}</span>
-                  </label>
-                  <input
-                    type="time"
-                    value={w.startTime}
-                    disabled={!w.enabled}
-                    onChange={(e) =>
-                      setWeekly((prev) => {
-                        const next = prev.slice()
-                        next[i] = { ...next[i], startTime: e.target.value }
-                        return next
-                      })
-                    }
-                    style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
-                  />
-                  <input
-                    type="time"
-                    value={w.endTime}
-                    disabled={!w.enabled}
-                    onChange={(e) =>
-                      setWeekly((prev) => {
-                        const next = prev.slice()
-                        next[i] = { ...next[i], endTime: e.target.value }
-                        return next
-                      })
-                    }
-                    style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
-                  />
-                </div>
-              ))}
-            </div>
-
-            <div style={{ marginTop: 12 }}>
-              <button
-                onClick={saveWeekly}
-                style={{
-                  width: 160,
-                  padding: 10,
-                  borderRadius: 8,
-                  border: '1px solid #111',
-                  background: '#111',
-                  color: '#fff',
-                  cursor: 'pointer',
-                }}
-              >
-                Save Weekly
-              </button>
+                    <input
+                      type="time"
+                      value={w.endTime}
+                      disabled={!w.enabled}
+                      onChange={(e) =>
+                        setWeekly((prev) => {
+                          const next = prev.slice()
+                          next[i] = { ...next[i], endTime: e.target.value }
+                          return next
+                        })
+                      }
+                      className="input"
+                      style={{ width: 160, opacity: w.enabled ? 1 : 0.6 }}
+                    />
+                  </div>
+                ))}
+                {weekly.every((w) => !w.enabled) ? <div className="muted">No weekly availability set.</div> : null}
+              </div>
             </div>
           </div>
 
-          <div style={{ padding: 12, border: '1px solid #e5e5e5', borderRadius: 12 }}>
-            <h2 style={{ margin: '0 0 10px 0' }}>One-off Exceptions</h2>
-            <form onSubmit={addException} style={{ display: 'grid', gap: 10, marginBottom: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 180px', gap: 10 }}>
-                <input
-                  type="date"
-                  value={exDate}
-                  onChange={(e) => setExDate(e.target.value)}
-                  required
-                  style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
-                />
-                <select
-                  value={exType}
-                  onChange={(e) => setExType(e.target.value as 'unavailable' | 'custom')}
-                  style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
-                >
-                  <option value="unavailable">unavailable</option>
-                  <option value="custom">custom hours</option>
-                </select>
+          <div className="card">
+            <div className="cardBody">
+              <div className="rowBetween">
+                <h2 style={{ margin: 0 }}>One-off Exceptions</h2>
+                <span className="badge">Timezone: {homeTimeZone}</span>
               </div>
 
-              {exType === 'custom' ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <input
-                    type="time"
-                    value={exStart}
-                    onChange={(e) => setExStart(e.target.value)}
-                    required
-                    style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
-                  />
-                  <input
-                    type="time"
-                    value={exEnd}
-                    onChange={(e) => setExEnd(e.target.value)}
-                    required
-                    style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
-                  />
-                </div>
-              ) : null}
-
-              <button
-                type="submit"
-                style={{
-                  width: 180,
-                  padding: 10,
-                  borderRadius: 8,
-                  border: '1px solid #111',
-                  background: '#fff',
-                  cursor: 'pointer',
-                }}
-              >
-                Add Exception
-              </button>
-            </form>
-
-            <div style={{ display: 'grid', gap: 8 }}>
-              {exceptions.map((ex) => (
-                <div
-                  key={ex.id}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    gap: 12,
-                    padding: 10,
-                    border: '1px solid #eee',
-                    borderRadius: 10,
-                  }}
-                >
-                  <div>
-                    <div style={{ fontWeight: 600 }}>{ex.date}</div>
-                    <div style={{ color: '#555' }}>
-                      {ex.type === 'unavailable' ? 'Unavailable' : `Custom: ${ex.startTime}–${ex.endTime}`}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => removeException(ex.id)}
-                    style={{
-                      padding: '8px 10px',
-                      borderRadius: 8,
-                      border: '1px solid #b00020',
-                      background: '#fff',
-                      color: '#b00020',
-                      cursor: 'pointer',
-                      height: 36,
-                      alignSelf: 'center',
-                    }}
-                  >
-                    Remove
+              <form onSubmit={addException} style={{ marginTop: 12 }} className="stack">
+                <div className="row" style={{ flexWrap: 'wrap' }}>
+                  <input type="date" value={exDate} onChange={(e) => setExDate(e.target.value)} required className="input" style={{ width: 220 }} />
+                  <select value={exType} onChange={(e) => setExType(e.target.value as 'unavailable' | 'custom')} className="select" style={{ width: 220 }}>
+                    <option value="unavailable">unavailable</option>
+                    <option value="custom">custom hours</option>
+                  </select>
+                  <button type="submit" className="btn">
+                    Add Exception
                   </button>
                 </div>
-              ))}
-              {exceptions.length === 0 ? <div style={{ color: '#555' }}>No exceptions yet.</div> : null}
+
+                {exType === 'custom' ? (
+                  <div className="row" style={{ flexWrap: 'wrap' }}>
+                    <input type="time" value={exStart} onChange={(e) => setExStart(e.target.value)} required className="input" style={{ width: 180 }} />
+                    <input type="time" value={exEnd} onChange={(e) => setExEnd(e.target.value)} required className="input" style={{ width: 180 }} />
+                  </div>
+                ) : null}
+              </form>
+
+              <div style={{ marginTop: 14 }} className="stack">
+                {exceptions.map((ex) => (
+                  <div key={ex.id} className="card" style={{ boxShadow: 'none' }}>
+                    <div className="cardBody rowBetween" style={{ alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontWeight: 800 }}>{ex.date}</div>
+                        <div className="muted">
+                          {ex.type === 'unavailable' ? 'Unavailable' : `Custom: ${ex.startTime}–${ex.endTime}`}
+                        </div>
+                      </div>
+                      <button onClick={() => removeException(ex.id)} className="btn btnSmall" style={{ borderColor: 'color-mix(in srgb, var(--danger) 35%, var(--border))', color: 'var(--danger)' }}>
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {exceptions.length === 0 ? <div className="muted">No exceptions yet.</div> : null}
+              </div>
             </div>
           </div>
         </div>
@@ -314,4 +298,3 @@ export default function AvailabilityPage() {
     </div>
   )
 }
-

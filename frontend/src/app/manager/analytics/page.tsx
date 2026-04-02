@@ -122,21 +122,32 @@ export default function ManagerAnalyticsPage() {
   }, [data])
 
   return (
-    <div style={{ maxWidth: 1100, margin: '40px auto', padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-        <h1 style={{ margin: 0 }}>Fairness Analytics</h1>
-        <Link href="/">Home</Link>
+    <div className="container" style={{ maxWidth: 1100 }}>
+      <div className="rowBetween">
+        <h1 className="pageTitle" style={{ margin: 0 }}>
+          Fairness Analytics
+        </h1>
+        <Link href="/" className="btn">
+          Home
+        </Link>
       </div>
 
-      {error ? <div style={{ marginTop: 12, color: '#b00020' }}>{error}</div> : null}
+      {error ? (
+        <div className="card" style={{ marginTop: 12, borderColor: 'color-mix(in srgb, var(--danger) 35%, var(--border))' }}>
+          <div className="cardBody" style={{ color: 'var(--danger)' }}>
+            {error}
+          </div>
+        </div>
+      ) : null}
 
-      <div style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ marginTop: 16 }} className="row">
         <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span>Location</span>
           <select
             value={locationId}
             onChange={(e) => setLocationId(e.target.value)}
-            style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
+            className="select"
+            style={{ width: 280 }}
           >
             {locations.map((l) => (
               <option key={l.id} value={l.id}>
@@ -152,7 +163,8 @@ export default function ManagerAnalyticsPage() {
             type="date"
             value={from}
             onChange={(e) => setFrom(e.target.value)}
-            style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
+            className="input"
+            style={{ width: 200 }}
           />
         </label>
         <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -161,27 +173,30 @@ export default function ManagerAnalyticsPage() {
             type="date"
             value={to}
             onChange={(e) => setTo(e.target.value)}
-            style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
+            className="input"
+            style={{ width: 200 }}
           />
         </label>
 
-        <button
-          onClick={load}
-          style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #111', background: '#fff', cursor: 'pointer' }}
-        >
+        <button onClick={load} className="btn">
           Refresh
         </button>
 
-        {data ? <div style={{ color: '#555' }}>Avg premium per staff: {data.avgPremiumPerStaff.toFixed(2)}</div> : null}
+        {data ? <span className="badge">Avg premium/staff: {data.avgPremiumPerStaff.toFixed(2)}</span> : null}
       </div>
 
-      {loading ? <div style={{ marginTop: 12 }}>Loading...</div> : null}
+      {loading ? (
+        <div style={{ marginTop: 12 }} className="muted">
+          Loading...
+        </div>
+      ) : null}
 
       {!loading && data ? (
         <div style={{ marginTop: 16, display: 'grid', gap: 16 }}>
-          <div style={{ padding: 12, border: '1px solid #e5e5e5', borderRadius: 12 }}>
-            <h2 style={{ margin: '0 0 10px 0' }}>Hours (range)</h2>
-            <div style={{ display: 'grid', gap: 8 }}>
+          <div className="card">
+            <div className="cardBody">
+              <h2 style={{ margin: '0 0 10px 0' }}>Hours (range)</h2>
+              <div style={{ display: 'grid', gap: 8 }}>
               {data.staff.map((s) => {
                 const pct = Math.min(100, (s.hours / maxHours) * 100)
                 const color = s.hours >= 60 ? '#b00020' : s.hours >= 40 ? '#d07a00' : s.hours >= 38 ? '#b38900' : '#0b6b2b'
@@ -195,12 +210,14 @@ export default function ManagerAnalyticsPage() {
                   </div>
                 )
               })}
+              </div>
             </div>
           </div>
 
-          <div style={{ padding: 12, border: '1px solid #e5e5e5', borderRadius: 12 }}>
-            <h2 style={{ margin: '0 0 10px 0' }}>Premium Shifts (range)</h2>
-            <div style={{ display: 'grid', gap: 8 }}>
+          <div className="card">
+            <div className="cardBody">
+              <h2 style={{ margin: '0 0 10px 0' }}>Premium Shifts (range)</h2>
+              <div style={{ display: 'grid', gap: 8 }}>
               {data.staff.map((s) => {
                 const pct = Math.min(100, (s.premiumShifts / maxPremium) * 100)
                 return (
@@ -213,20 +230,22 @@ export default function ManagerAnalyticsPage() {
                   </div>
                 )
               })}
+              </div>
             </div>
           </div>
 
-          <div style={{ padding: 12, border: '1px solid #e5e5e5', borderRadius: 12, overflowX: 'auto' }}>
+          <div className="card" style={{ overflowX: 'auto' }}>
+            <div className="cardBody">
             <h2 style={{ margin: '0 0 10px 0' }}>Details</h2>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr>
-                  <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #eee' }}>Staff</th>
-                  <th style={{ textAlign: 'right', padding: 8, borderBottom: '1px solid #eee' }}>Hours</th>
-                  <th style={{ textAlign: 'right', padding: 8, borderBottom: '1px solid #eee' }}>Desired</th>
-                  <th style={{ textAlign: 'right', padding: 8, borderBottom: '1px solid #eee' }}>Δ</th>
-                  <th style={{ textAlign: 'right', padding: 8, borderBottom: '1px solid #eee' }}>Premium</th>
-                  <th style={{ textAlign: 'right', padding: 8, borderBottom: '1px solid #eee' }}>Fairness</th>
+                  <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid var(--border)' }}>Staff</th>
+                  <th style={{ textAlign: 'right', padding: 8, borderBottom: '1px solid var(--border)' }}>Hours</th>
+                  <th style={{ textAlign: 'right', padding: 8, borderBottom: '1px solid var(--border)' }}>Desired</th>
+                  <th style={{ textAlign: 'right', padding: 8, borderBottom: '1px solid var(--border)' }}>Δ</th>
+                  <th style={{ textAlign: 'right', padding: 8, borderBottom: '1px solid var(--border)' }}>Premium</th>
+                  <th style={{ textAlign: 'right', padding: 8, borderBottom: '1px solid var(--border)' }}>Fairness</th>
                 </tr>
               </thead>
               <tbody>
@@ -235,25 +254,35 @@ export default function ManagerAnalyticsPage() {
                   const delta = desired === null ? null : s.hours - desired
                   return (
                     <tr key={s.id}>
-                      <td style={{ padding: 8, borderBottom: '1px solid #f3f3f3' }}>{s.name || s.email}</td>
-                      <td style={{ padding: 8, borderBottom: '1px solid #f3f3f3', textAlign: 'right' }}>{s.hours.toFixed(1)}</td>
-                      <td style={{ padding: 8, borderBottom: '1px solid #f3f3f3', textAlign: 'right' }}>
+                      <td style={{ padding: 10, borderBottom: '1px solid color-mix(in srgb, var(--border) 70%, transparent)' }}>
+                        {s.name || s.email}
+                      </td>
+                      <td style={{ padding: 10, borderBottom: '1px solid color-mix(in srgb, var(--border) 70%, transparent)', textAlign: 'right' }}>
+                        {s.hours.toFixed(1)}
+                      </td>
+                      <td style={{ padding: 10, borderBottom: '1px solid color-mix(in srgb, var(--border) 70%, transparent)', textAlign: 'right' }}>
                         {desired === null ? '-' : desired.toFixed(1)}
                       </td>
-                      <td style={{ padding: 8, borderBottom: '1px solid #f3f3f3', textAlign: 'right' }}>
+                      <td style={{ padding: 10, borderBottom: '1px solid color-mix(in srgb, var(--border) 70%, transparent)', textAlign: 'right' }}>
                         {delta === null ? '-' : delta.toFixed(1)}
                       </td>
-                      <td style={{ padding: 8, borderBottom: '1px solid #f3f3f3', textAlign: 'right' }}>{s.premiumShifts}</td>
-                      <td style={{ padding: 8, borderBottom: '1px solid #f3f3f3', textAlign: 'right' }}>{s.fairnessScore}</td>
+                      <td style={{ padding: 10, borderBottom: '1px solid color-mix(in srgb, var(--border) 70%, transparent)', textAlign: 'right' }}>
+                        {s.premiumShifts}
+                      </td>
+                      <td style={{ padding: 10, borderBottom: '1px solid color-mix(in srgb, var(--border) 70%, transparent)', textAlign: 'right' }}>
+                        {s.fairnessScore}
+                      </td>
                     </tr>
                   )
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       ) : null}
+
+      {!loading && !data && !error ? <div style={{ marginTop: 16 }} className="muted">No analytics data yet.</div> : null}
     </div>
   )
 }
-

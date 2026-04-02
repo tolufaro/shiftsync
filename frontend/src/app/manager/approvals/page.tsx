@@ -100,20 +100,31 @@ export default function ManagerApprovalsPage() {
 
   return (
     <div className="container" style={{ maxWidth: 1100 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-        <h1 style={{ margin: 0 }}>Manager Approvals</h1>
-        <Link href="/">Home</Link>
+      <div className="rowBetween">
+        <h1 className="pageTitle" style={{ margin: 0 }}>
+          Manager Approvals
+        </h1>
+        <Link href="/" className="btn">
+          Home
+        </Link>
       </div>
 
-      {error ? <div style={{ marginTop: 12, color: '#b00020' }}>{error}</div> : null}
+      {error ? (
+        <div className="card" style={{ marginTop: 12, borderColor: 'color-mix(in srgb, var(--danger) 35%, var(--border))' }}>
+          <div className="cardBody" style={{ color: 'var(--danger)' }}>
+            {error}
+          </div>
+        </div>
+      ) : null}
 
-      <div style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ marginTop: 16 }} className="row">
         <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span>Location</span>
           <select
             value={locationId}
             onChange={(e) => setLocationId(e.target.value)}
-            style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
+            className="select"
+            style={{ width: 260 }}
           >
             {locations.map((l) => (
               <option key={l.id} value={l.id}>
@@ -122,77 +133,63 @@ export default function ManagerApprovalsPage() {
             ))}
           </select>
         </label>
-        <button
-          onClick={load}
-          style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #111', background: '#fff', cursor: 'pointer' }}
-        >
+        <button onClick={load} className="btn">
           Refresh
         </button>
       </div>
 
-      {loading ? <div style={{ marginTop: 12 }}>Loading...</div> : null}
+      {loading ? (
+        <div style={{ marginTop: 12 }} className="muted">
+          Loading...
+        </div>
+      ) : null}
 
       {!loading ? (
-        <div style={{ marginTop: 16, display: 'grid', gap: 10 }}>
+        <div style={{ marginTop: 16 }} className="stack">
           {swaps.map((s) => (
-            <div key={s.id} style={{ padding: 12, border: '1px solid #e5e5e5', borderRadius: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
-                <div style={{ fontWeight: 700 }}>
-                  {s.type.toUpperCase()} — {s.shift.location.name}
-                </div>
-                <div style={{ color: '#555' }}>{s.status}</div>
-              </div>
-
-              <div style={{ marginTop: 6, color: '#333' }}>
-                <div>
-                  {formatDayLabel(s.shift.startAt, s.shift.location.timezone)} —{' '}
-                  {formatTimeRange(s.shift.startAt, s.shift.endAt, s.shift.location.timezone)}{' '}
-                  <span style={{ color: '#666' }}>({s.shift.location.timezone})</span>
-                </div>
-                <div style={{ marginTop: 4 }}>
-                  Requested by: <strong>{s.requestedBy.name || s.requestedBy.email}</strong>
-                </div>
-                {s.targetStaff ? (
-                  <div>
-                    Target: <strong>{s.targetStaff.name || s.targetStaff.email}</strong>
+            <div key={s.id} className="card">
+              <div className="cardBody">
+                <div className="rowBetween">
+                  <div style={{ fontWeight: 800 }}>
+                    {s.type.toUpperCase()} — {s.shift.location.name}
                   </div>
-                ) : null}
-                {s.expiresAt ? <div style={{ color: '#666' }}>Expires: {new Date(s.expiresAt).toLocaleString()}</div> : null}
-              </div>
+                  <span className="badge">{s.status}</span>
+                </div>
 
-              <div style={{ marginTop: 10, display: 'flex', gap: 10 }}>
-                <button
-                  onClick={() => decide(s.id, 'approve')}
-                  disabled={Boolean(actioning[s.id])}
-                  style={{
-                    padding: '10px 12px',
-                    borderRadius: 8,
-                    border: '1px solid #0b6b2b',
-                    background: '#0b6b2b',
-                    color: '#fff',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Approve
-                </button>
-                <button
-                  onClick={() => decide(s.id, 'deny')}
-                  disabled={Boolean(actioning[s.id])}
-                  style={{
-                    padding: '10px 12px',
-                    borderRadius: 8,
-                    border: '1px solid #b00020',
-                    background: '#fff',
-                    color: '#b00020',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Deny
-                </button>
+                <div style={{ marginTop: 6 }}>
+                  <div>
+                    {formatDayLabel(s.shift.startAt, s.shift.location.timezone)} —{' '}
+                    {formatTimeRange(s.shift.startAt, s.shift.endAt, s.shift.location.timezone)}{' '}
+                    <span className="muted">({s.shift.location.timezone})</span>
+                  </div>
+                  <div style={{ marginTop: 4 }}>
+                    Requested by: <strong>{s.requestedBy.name || s.requestedBy.email}</strong>
+                  </div>
+                  {s.targetStaff ? (
+                    <div>
+                      Target: <strong>{s.targetStaff.name || s.targetStaff.email}</strong>
+                    </div>
+                  ) : null}
+                  {s.expiresAt ? <div className="muted">Expires: {new Date(s.expiresAt).toLocaleString()}</div> : null}
+                </div>
+
+                <div className="row" style={{ marginTop: 12 }}>
+                  <button onClick={() => decide(s.id, 'approve')} disabled={Boolean(actioning[s.id])} className="btn btnPrimary">
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => decide(s.id, 'deny')}
+                    disabled={Boolean(actioning[s.id])}
+                    className="btn"
+                    style={{ borderColor: 'color-mix(in srgb, var(--danger) 35%, var(--border))', color: 'var(--danger)' }}
+                  >
+                    Deny
+                  </button>
+                </div>
               </div>
             </div>
           ))}
-          {swaps.length === 0 ? <div style={{ color: '#555' }}>No pending requests.</div> : null}
+          {swaps.length === 0 ? <div className="muted">No pending requests.</div> : null}
         </div>
       ) : null}
     </div>

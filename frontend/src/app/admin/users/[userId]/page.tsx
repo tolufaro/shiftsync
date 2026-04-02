@@ -159,49 +159,61 @@ export default function AdminUserDetailPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1000, margin: '40px auto', padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-        <h1 style={{ margin: 0 }}>Admin — User</h1>
-        <div style={{ display: 'flex', gap: 12 }}>
-          <Link href="/admin/users">Back to Users</Link>
-          <Link href="/">Home</Link>
+    <div className="container" style={{ maxWidth: 1100 }}>
+      <div className="rowBetween">
+        <h1 className="pageTitle" style={{ margin: 0 }}>
+          Admin — User
+        </h1>
+        <div className="row" style={{ justifyContent: 'flex-end' }}>
+          <Link href="/admin/users" className="btn">
+            Back to Users
+          </Link>
+          <Link href="/" className="btn">
+            Home
+          </Link>
         </div>
       </div>
 
-      {me ? <div style={{ marginTop: 8, color: '#555' }}>Signed in as {me.email}</div> : null}
+      {me ? (
+        <div style={{ marginTop: 10 }} className="row">
+          <span className="badge">Admin</span>
+          <span className="muted">Signed in as {me.email}</span>
+        </div>
+      ) : null}
 
-      {error ? <div style={{ marginTop: 12, color: '#b00020' }}>{error}</div> : null}
-      {loading ? <div style={{ marginTop: 12 }}>Loading...</div> : null}
+      {error ? (
+        <div className="card" style={{ marginTop: 12, borderColor: 'color-mix(in srgb, var(--danger) 35%, var(--border))' }}>
+          <div className="cardBody" style={{ color: 'var(--danger)' }}>
+            {error}
+          </div>
+        </div>
+      ) : null}
+      {loading ? (
+        <div style={{ marginTop: 12 }} className="muted">
+          Loading...
+        </div>
+      ) : null}
 
       {!loading && user ? (
         <div style={{ display: 'grid', gap: 16, marginTop: 16 }}>
-          <div style={{ padding: 12, border: '1px solid #e5e5e5', borderRadius: 12 }}>
-            <h2 style={{ margin: '0 0 10px 0' }}>Profile</h2>
-            <form onSubmit={saveProfile} style={{ display: 'grid', gap: 10 }}>
+          <div className="card">
+            <div className="cardBody">
+              <h2 style={{ margin: '0 0 10px 0' }}>Profile</h2>
+              <form onSubmit={saveProfile} className="stack">
               <div style={{ display: 'grid', gap: 6 }}>
                 <label>Name</label>
-                <input
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
-                />
+                <input value={editName} onChange={(e) => setEditName(e.target.value)} className="input" />
               </div>
               <div style={{ display: 'grid', gap: 6 }}>
                 <label>Email</label>
-                <input
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  type="email"
-                  required
-                  style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
-                />
+                <input value={editEmail} onChange={(e) => setEditEmail(e.target.value)} type="email" required className="input" />
               </div>
               <div style={{ display: 'grid', gap: 6 }}>
                 <label>Role</label>
                 <select
                   value={editRole}
                   onChange={(e) => setEditRole(e.target.value as UserRole)}
-                  style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
+                  className="select"
                 >
                   <option value="staff">staff</option>
                   <option value="manager">manager</option>
@@ -215,30 +227,23 @@ export default function AdminUserDetailPage() {
                   onChange={(e) => setEditPassword(e.target.value)}
                   type="password"
                   placeholder="Leave blank to keep current password"
-                  style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
+                  className="input"
                 />
               </div>
-              <button
-                type="submit"
-                disabled={saving}
-                style={{
-                  width: 180,
-                  padding: 10,
-                  borderRadius: 8,
-                  border: '1px solid #111',
-                  background: '#111',
-                  color: '#fff',
-                  cursor: 'pointer',
-                }}
-              >
+              <button type="submit" disabled={saving} className="btn btnPrimary" style={{ width: 180 }}>
                 {saving ? 'Saving...' : 'Save Profile'}
               </button>
             </form>
+            </div>
           </div>
 
-          <div style={{ padding: 12, border: '1px solid #e5e5e5', borderRadius: 12 }}>
-            <h2 style={{ margin: '0 0 10px 0' }}>Assigned Locations</h2>
-            <div style={{ display: 'grid', gap: 8 }}>
+          <div className="card">
+            <div className="cardBody">
+              <div className="rowBetween">
+                <h2 style={{ margin: 0 }}>Assigned Locations</h2>
+                <span className="badge">Assigned: {locations.length}</span>
+              </div>
+              <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
               {allLocations.map((l) => (
                 <label key={l.id} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                   <input
@@ -247,60 +252,48 @@ export default function AdminUserDetailPage() {
                     onChange={() => toggleInSet(setSelectedLocationIds, l.id)}
                   />
                   <span>
-                    {l.name} <span style={{ color: '#666' }}>({l.timezone})</span>
+                    {l.name} <span className="muted">({l.timezone})</span>
                   </span>
                 </label>
               ))}
-              {allLocations.length === 0 ? <div style={{ color: '#555' }}>No locations seeded.</div> : null}
+              {allLocations.length === 0 ? <div className="muted">No locations seeded.</div> : null}
             </div>
-            <div style={{ marginTop: 10, display: 'flex', gap: 12, alignItems: 'center' }}>
-              <button
-                onClick={saveLocations}
-                disabled={saving}
-                style={{
-                  width: 200,
-                  padding: 10,
-                  borderRadius: 8,
-                  border: '1px solid #111',
-                  background: '#fff',
-                  cursor: 'pointer',
-                }}
-              >
+            <div style={{ marginTop: 12 }} className="row">
+              <button onClick={saveLocations} disabled={saving} className="btn">
                 {saving ? 'Saving...' : 'Save Locations'}
               </button>
-              <div style={{ color: '#555' }}>Currently assigned: {locations.length}</div>
+            </div>
             </div>
           </div>
 
-          <div style={{ padding: 12, border: '1px solid #e5e5e5', borderRadius: 12 }}>
-            <h2 style={{ margin: '0 0 10px 0' }}>Skills</h2>
-            <div style={{ display: 'grid', gap: 8 }}>
+          <div className="card">
+            <div className="cardBody">
+              <div className="rowBetween">
+                <h2 style={{ margin: 0 }}>Skills</h2>
+                <span className="badge">Assigned: {skills.length}</span>
+              </div>
+              <div style={{ display: 'grid', gap: 8, marginTop: 10 }}>
               {allSkills.map((s) => (
                 <label key={s.id} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
                   <input type="checkbox" checked={selectedSkillIds.has(s.id)} onChange={() => toggleInSet(setSelectedSkillIds, s.id)} />
                   <span>{s.name}</span>
                 </label>
               ))}
-              {allSkills.length === 0 ? <div style={{ color: '#555' }}>No skills seeded.</div> : null}
+              {allSkills.length === 0 ? <div className="muted">No skills seeded.</div> : null}
             </div>
-            <div style={{ marginTop: 10, display: 'flex', gap: 12, alignItems: 'center' }}>
-              <button
-                onClick={saveSkills}
-                disabled={saving}
-                style={{
-                  width: 200,
-                  padding: 10,
-                  borderRadius: 8,
-                  border: '1px solid #111',
-                  background: '#fff',
-                  cursor: 'pointer',
-                }}
-              >
+            <div style={{ marginTop: 12 }} className="row">
+              <button onClick={saveSkills} disabled={saving} className="btn">
                 {saving ? 'Saving...' : 'Save Skills'}
               </button>
-              <div style={{ color: '#555' }}>Currently assigned: {skills.length}</div>
+            </div>
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {!loading && !user && !error ? (
+        <div style={{ marginTop: 16 }} className="muted">
+          User not found.
         </div>
       ) : null}
     </div>

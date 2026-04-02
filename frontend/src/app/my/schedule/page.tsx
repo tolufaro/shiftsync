@@ -82,52 +82,73 @@ export default function MySchedulePage() {
 
   return (
     <div className="container" style={{ maxWidth: 960 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-        <h1 style={{ margin: 0 }}>My Schedule</h1>
-        <Link href="/">Home</Link>
+      <div className="rowBetween">
+        <h1 className="pageTitle" style={{ margin: 0 }}>
+          My Schedule
+        </h1>
+        <Link href="/" className="btn">
+          Home
+        </Link>
       </div>
 
-      {error ? <div style={{ marginTop: 12, color: '#b00020' }}>{error}</div> : null}
+      <div className="card" style={{ marginTop: 12 }}>
+        <div className="cardBody rowBetween" style={{ alignItems: 'center' }}>
+          <div className="muted">Shift times are displayed in each location’s timezone.</div>
+          <span className="badge">Timezone-aware</span>
+        </div>
+      </div>
 
-      <div style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+      {error ? (
+        <div className="card" style={{ marginTop: 12, borderColor: 'color-mix(in srgb, var(--danger) 35%, var(--border))' }}>
+          <div className="cardBody" style={{ color: 'var(--danger)' }}>
+            {error}
+          </div>
+        </div>
+      ) : null}
+
+      <div style={{ marginTop: 16 }} className="row">
         <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <span>Week start</span>
           <input
             type="date"
             value={weekStart}
             onChange={(e) => setWeekStart(e.target.value)}
-            style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
+            className="input"
+            style={{ width: 200 }}
           />
         </label>
-        <button
-          onClick={load}
-          style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #111', background: '#fff', cursor: 'pointer' }}
-        >
+        <button onClick={load} className="btn">
           Refresh
         </button>
       </div>
 
-      {loading ? <div style={{ marginTop: 12 }}>Loading...</div> : null}
+      {loading ? (
+        <div style={{ marginTop: 12 }} className="muted">
+          Loading...
+        </div>
+      ) : null}
 
       {!loading ? (
-        <div style={{ marginTop: 16, display: 'grid', gap: 10 }}>
+        <div style={{ marginTop: 16 }} className="stack">
           {shifts.map((s) => (
-            <div key={s.assignmentId} style={{ padding: 12, border: '1px solid #e5e5e5', borderRadius: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                <div style={{ fontWeight: 700 }}>{formatDayLabel(s.startAt, s.location.timezone)}</div>
-                <div style={{ color: s.status === 'published' ? '#0b6b2b' : '#555' }}>{s.status}</div>
-              </div>
-              <div style={{ marginTop: 6 }}>
-                <div style={{ fontSize: 18, fontWeight: 700 }}>{formatTimeRange(s.startAt, s.endAt, s.location.timezone)}</div>
-                <div style={{ marginTop: 4, color: '#333' }}>
-                  Location: <strong>{s.location.name}</strong> <span style={{ color: '#666' }}>({s.location.timezone})</span>
+            <div key={s.assignmentId} className="card">
+              <div className="cardBody">
+                <div className="rowBetween">
+                  <div style={{ fontWeight: 800 }}>{formatDayLabel(s.startAt, s.location.timezone)}</div>
+                  <span className={`badge ${s.status === 'published' ? 'badgeSuccess' : ''}`}>{s.status}</span>
                 </div>
-                {s.requiredSkillName ? <div style={{ color: '#333' }}>Role: {s.requiredSkillName}</div> : null}
-                <div style={{ color: '#555' }}>Assignment: {s.assignmentStatus}</div>
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ fontSize: 18, fontWeight: 800 }}>{formatTimeRange(s.startAt, s.endAt, s.location.timezone)}</div>
+                  <div style={{ marginTop: 4 }}>
+                    Location: <strong>{s.location.name}</strong> <span className="muted">({s.location.timezone})</span>
+                  </div>
+                  {s.requiredSkillName ? <div>Role: {s.requiredSkillName}</div> : null}
+                  <div className="muted">Assignment: {s.assignmentStatus}</div>
+                </div>
               </div>
             </div>
           ))}
-          {shifts.length === 0 ? <div style={{ color: '#555' }}>No shifts this week.</div> : null}
+          {shifts.length === 0 ? <div className="muted">No shifts this week.</div> : null}
         </div>
       ) : null}
     </div>
