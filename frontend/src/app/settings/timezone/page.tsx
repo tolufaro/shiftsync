@@ -72,27 +72,45 @@ export default function TimezoneSettingsPage() {
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: '40px auto', padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-        <h1 style={{ margin: 0 }}>Timezone Settings</h1>
-        <Link href="/">Home</Link>
+    <div className="container" style={{ maxWidth: 960 }}>
+      <div className="rowBetween">
+        <h1 className="pageTitle" style={{ margin: 0 }}>
+          Timezone Settings
+        </h1>
+        <Link href="/" className="btn">
+          Home
+        </Link>
       </div>
 
-      {error ? <div style={{ marginTop: 12, color: '#b00020' }}>{error}</div> : null}
-      {loading ? <div style={{ marginTop: 12 }}>Loading...</div> : null}
+      {error ? (
+        <div className="card" style={{ marginTop: 12, borderColor: 'color-mix(in srgb, var(--danger) 35%, var(--border))' }}>
+          <div className="cardBody" style={{ color: 'var(--danger)' }}>
+            {error}
+          </div>
+        </div>
+      ) : null}
+      {loading ? <div className="muted" style={{ marginTop: 12 }}>Loading...</div> : null}
 
       {!loading && user ? (
-        <div style={{ marginTop: 16, display: 'grid', gap: 12 }}>
-          <div style={{ color: '#555' }}>
-            Availability checks use your home timezone: <strong>{user.homeTimeZone}</strong>
+        <div style={{ marginTop: 16 }} className="stack">
+          <div className="card">
+            <div className="cardBody rowBetween" style={{ alignItems: 'center' }}>
+              <div className="muted">
+                Availability checks use your home timezone: <strong>{user.homeTimeZone}</strong>
+              </div>
+              <span className="badge">IANA</span>
+            </div>
           </div>
-          <label style={{ display: 'grid', gap: 8 }}>
-            <div>Home timezone (IANA)</div>
+
+          <div className="card">
+            <div className="cardBody stack">
+              <label style={{ display: 'grid', gap: 8 }}>
+                <div style={{ fontWeight: 700 }}>Home timezone</div>
             {timeZones.length ? (
               <select
                 value={timeZone}
                 onChange={(e) => setTimeZone(e.target.value)}
-                style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
+                className="select"
               >
                 {timeZones.map((tz) => (
                   <option key={tz} value={tz}>
@@ -105,17 +123,15 @@ export default function TimezoneSettingsPage() {
                 value={timeZone}
                 onChange={(e) => setTimeZone(e.target.value)}
                 placeholder="e.g. America/New_York"
-                style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
+                className="input"
               />
             )}
-          </label>
-          <button
-            onClick={save}
-            disabled={saving || !timeZone.trim()}
-            style={{ width: 200, padding: '10px 12px', borderRadius: 8, border: '1px solid #111', background: '#111', color: '#fff', cursor: 'pointer' }}
-          >
-            {saving ? 'Saving...' : 'Save'}
-          </button>
+              </label>
+              <button onClick={save} disabled={saving || !timeZone.trim()} className="btn btnPrimary" style={{ width: 200 }}>
+                {saving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
     </div>

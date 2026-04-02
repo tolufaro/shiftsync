@@ -70,26 +70,42 @@ export default function AdminAuditExportPage() {
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: '40px auto', padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-        <h1 style={{ margin: 0 }}>Admin — Audit Export</h1>
-        <Link href="/">Home</Link>
+    <div className="container" style={{ maxWidth: 960 }}>
+      <div className="rowBetween">
+        <h1 className="pageTitle" style={{ margin: 0 }}>
+          Admin — Audit Export
+        </h1>
+        <Link href="/" className="btn">
+          Home
+        </Link>
       </div>
 
-      {me ? <div style={{ marginTop: 8, color: '#555' }}>Signed in as {me.email}</div> : null}
-      {error ? <div style={{ marginTop: 12, color: '#b00020' }}>{error}</div> : null}
-      {loading ? <div style={{ marginTop: 12 }}>Loading...</div> : null}
+      {me ? (
+        <div style={{ marginTop: 10 }} className="row">
+          <span className="badge">Admin</span>
+          <span className="muted">Signed in as {me.email}</span>
+        </div>
+      ) : null}
+      {error ? (
+        <div className="card" style={{ marginTop: 12, borderColor: 'color-mix(in srgb, var(--danger) 35%, var(--border))' }}>
+          <div className="cardBody" style={{ color: 'var(--danger)' }}>
+            {error}
+          </div>
+        </div>
+      ) : null}
+      {loading ? <div className="muted" style={{ marginTop: 12 }}>Loading...</div> : null}
 
       {!loading && !error ? (
-        <div style={{ marginTop: 16, padding: 12, border: '1px solid #e5e5e5', borderRadius: 12 }}>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="cardBody">
+            <div className="row" style={{ flexWrap: 'wrap' }}>
             <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <span>From</span>
               <input
                 type="date"
                 value={from}
                 onChange={(e) => setFrom(e.target.value)}
-                style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
+                className="input"
               />
             </label>
             <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -98,7 +114,7 @@ export default function AdminAuditExportPage() {
                 type="date"
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
-                style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
+                className="input"
               />
             </label>
             <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -106,7 +122,7 @@ export default function AdminAuditExportPage() {
               <select
                 value={locationId}
                 onChange={(e) => setLocationId(e.target.value)}
-                style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
+                className="select"
               >
                 <option value="">All</option>
                 {locations.map((l) => (
@@ -116,19 +132,16 @@ export default function AdminAuditExportPage() {
                 ))}
               </select>
             </label>
-            <button
-              onClick={download}
-              style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #111', background: '#111', color: '#fff', cursor: 'pointer' }}
-            >
+            <button onClick={download} className="btn btnPrimary">
               Download CSV
             </button>
           </div>
-          <div style={{ marginTop: 10, color: '#555' }}>
+          <div className="muted" style={{ marginTop: 10 }}>
             Exports audit log entries for shifts/assignments/swaps in the selected range. Location filter applies to entries that can be mapped to a location.
           </div>
+        </div>
         </div>
       ) : null}
     </div>
   )
 }
-

@@ -66,7 +66,7 @@ export default function AvailableShiftsPage() {
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: '40px auto', padding: 16 }}>
+    <div className="container" style={{ maxWidth: 960 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
         <h1 style={{ margin: 0 }}>Available Shifts</h1>
         <Link href="/">Home</Link>

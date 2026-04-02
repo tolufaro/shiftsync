@@ -366,7 +366,7 @@ export default function ManagerSchedulePage() {
   }
 
   return (
-    <div style={{ maxWidth: 1200, margin: '40px auto', padding: 16 }}>
+    <div className="container" style={{ maxWidth: 1200 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
         <h1 style={{ margin: 0 }}>Manager Schedule</h1>
         <Link href="/">Home</Link>
@@ -481,6 +481,10 @@ export default function ManagerSchedulePage() {
                     const bg = s.status === 'published' ? '#e6f7ee' : '#f3f3f3'
                     const border = s.status === 'published' ? '#3aa76d' : '#bbb'
                     const fb = assignFeedback[s.id]
+                    const preview = previewByShiftId[s.id]
+                    const previewMatches = preview && preview.staffId === (assignSelection[s.id] || '')
+                    const overtime = previewMatches ? preview.data.overtime : null
+                    const violations = previewMatches ? preview.data.violations : []
                     return (
                       <div
                         key={s.id}
@@ -497,27 +501,13 @@ export default function ManagerSchedulePage() {
                           <div style={{ display: 'flex', gap: 8 }}>
                             <button
                               onClick={() => loadHistory(s.id)}
-                              style={{
-                                padding: '6px 8px',
-                                borderRadius: 8,
-                                border: '1px solid #111',
-                                background: '#fff',
-                                cursor: 'pointer',
-                                height: 32,
-                              }}
+                              className="btn btnSmall"
                             >
                               History
                             </button>
                             <button
                               onClick={() => toggleStatus(s)}
-                              style={{
-                                padding: '6px 8px',
-                                borderRadius: 8,
-                                border: '1px solid #111',
-                                background: '#fff',
-                                cursor: 'pointer',
-                                height: 32,
-                              }}
+                              className="btn btnSmall"
                             >
                               {s.status === 'draft' ? 'Publish' : 'Unpublish'}
                             </button>
@@ -555,7 +545,8 @@ export default function ManagerSchedulePage() {
                               setAssignFeedback((prev) => ({ ...prev, [s.id]: prev[s.id] }))
                               if (nextStaffId) loadPreview(s.id, nextStaffId)
                             }}
-                            style={{ padding: 8, borderRadius: 8, border: '1px solid #ccc' }}
+                            className="select"
+                            style={{ padding: 8 }}
                           >
                             <option value="">Assign staff...</option>
                             {staff.map((st) => (
@@ -566,40 +557,32 @@ export default function ManagerSchedulePage() {
                           </select>
                           <button
                             onClick={() => assign(s.id)}
-                            style={{
-                              padding: '8px 10px',
-                              borderRadius: 8,
-                              border: '1px solid #111',
-                              background: '#111',
-                              color: '#fff',
-                              cursor: 'pointer',
-                            }}
+                            className="btn btnPrimary"
                           >
                             Assign
                           </button>
                         </div>
 
-                        {previewByShiftId[s.id] && previewByShiftId[s.id].staffId === (assignSelection[s.id] || '') ? (
+                        {previewMatches ? (
                           <div style={{ marginTop: 10, padding: 10, borderRadius: 10, border: '1px solid #eee', background: '#fafafa' }}>
-                            {previewByShiftId[s.id].data.overtime ? (
+                            {overtime ? (
                               <div style={{ color: '#333' }}>
-                                Weekly: {Number(previewByShiftId[s.id].data.overtime.weeklyHoursBefore).toFixed(1)}h →{' '}
-                                {Number(previewByShiftId[s.id].data.overtime.weeklyHoursAfter).toFixed(1)}h
+                                Weekly: {Number(overtime.weeklyHoursBefore).toFixed(1)}h → {Number(overtime.weeklyHoursAfter).toFixed(1)}h
                               </div>
                             ) : (
                               <div style={{ color: '#555' }}>Preview unavailable</div>
                             )}
-                            {previewByShiftId[s.id].data.violations?.some((v) => v.severity === 'warning') ? (
+                            {violations?.some((v) => v.severity === 'warning') ? (
                               <div style={{ marginTop: 4, color: '#b38900' }}>
-                                {previewByShiftId[s.id].data.violations
+                                {violations
                                   .filter((v) => v.severity === 'warning' && v.message)
                                   .map((v) => v.message)
                                   .join(' · ') || 'Near overtime'}
                               </div>
                             ) : null}
-                            {previewByShiftId[s.id].data.violations?.some((v) => v.severity === 'block') ? (
+                            {violations?.some((v) => v.severity === 'block') ? (
                               <div style={{ marginTop: 4, color: '#b00020' }}>
-                                {previewByShiftId[s.id].data.violations
+                                {violations
                                   .filter((v) => v.severity === 'block' && v.message)
                                   .map((v) => v.message)
                                   .join(' · ') || 'Blocked'}

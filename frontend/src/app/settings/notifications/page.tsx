@@ -85,29 +85,37 @@ export default function NotificationSettingsPage() {
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: '40px auto', padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-        <h1 style={{ margin: 0 }}>Notification Settings</h1>
-        <Link href="/">Home</Link>
+    <div className="container" style={{ maxWidth: 960 }}>
+      <div className="rowBetween">
+        <h1 className="pageTitle" style={{ margin: 0 }}>
+          Notification Settings
+        </h1>
+        <Link href="/" className="btn">
+          Home
+        </Link>
       </div>
 
-      {error ? <div style={{ marginTop: 12, color: '#b00020' }}>{error}</div> : null}
-      {loading ? <div style={{ marginTop: 12 }}>Loading...</div> : null}
+      {error ? (
+        <div className="card" style={{ marginTop: 12, borderColor: 'color-mix(in srgb, var(--danger) 35%, var(--border))' }}>
+          <div className="cardBody" style={{ color: 'var(--danger)' }}>
+            {error}
+          </div>
+        </div>
+      ) : null}
+      {loading ? <div className="muted" style={{ marginTop: 12 }}>Loading...</div> : null}
 
       {!loading ? (
-        <div style={{ marginTop: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-            <div style={{ color: '#555' }}>Toggle email delivery per notification type (in-app is always on).</div>
-            <button
-              onClick={save}
-              disabled={saving}
-              style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #111', background: '#111', color: '#fff', cursor: 'pointer' }}
-            >
-              {saving ? 'Saving...' : 'Save'}
-            </button>
+        <div style={{ marginTop: 16 }} className="stack">
+          <div className="card">
+            <div className="cardBody rowBetween" style={{ alignItems: 'center' }}>
+              <div className="muted">Toggle email delivery per notification type (in-app is always on).</div>
+              <button onClick={save} disabled={saving} className="btn btnPrimary">
+                {saving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
           </div>
 
-          <div style={{ marginTop: 12, border: '1px solid #e5e5e5', borderRadius: 12, overflow: 'hidden' }}>
+          <div className="card" style={{ overflow: 'hidden' }}>
             {KNOWN_TYPES.map((t, idx) => {
               const enabled = Boolean(prefs[t.type])
               return (
@@ -118,16 +126,16 @@ export default function NotificationSettingsPage() {
                     justifyContent: 'space-between',
                     gap: 12,
                     padding: 12,
-                    borderTop: idx === 0 ? 'none' : '1px solid #f2f2f2',
+                    borderTop: idx === 0 ? 'none' : '1px solid var(--border)',
                     alignItems: 'center',
                   }}
                 >
                   <div>
-                    <div style={{ fontWeight: 700 }}>{t.label}</div>
-                    <div style={{ color: '#666' }}>{t.type}</div>
+                    <div style={{ fontWeight: 800 }}>{t.label}</div>
+                    <div className="muted">{t.type}</div>
                   </div>
                   <label style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                    <span style={{ color: '#555' }}>{enabled ? 'In-app + email' : 'In-app only'}</span>
+                    <span className="muted">{enabled ? 'In-app + email' : 'In-app only'}</span>
                     <input
                       type="checkbox"
                       checked={enabled}
@@ -143,4 +151,3 @@ export default function NotificationSettingsPage() {
     </div>
   )
 }
-

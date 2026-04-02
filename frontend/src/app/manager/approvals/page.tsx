@@ -99,7 +99,7 @@ export default function ManagerApprovalsPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1000, margin: '40px auto', padding: 16 }}>
+    <div className="container" style={{ maxWidth: 1100 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
         <h1 style={{ margin: 0 }}>Manager Approvals</h1>
         <Link href="/">Home</Link>

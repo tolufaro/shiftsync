@@ -83,49 +83,90 @@ export default function Home() {
   }
 
   return (
-    <div style={{ maxWidth: 720, margin: '40px auto', padding: 16 }}>
-      <h1 style={{ marginBottom: 12 }}>ShiftSync</h1>
+    <div className="container" style={{ maxWidth: 840 }}>
+      <div className="rowBetween">
+        <h1 className="pageTitle" style={{ marginBottom: 12 }}>
+          ShiftSync
+        </h1>
+        {user ? (
+          <Link href="/notifications" className="btn" style={{ padding: '8px 10px' }}>
+            <BellIcon />
+            <span style={{ fontWeight: 700 }}>{unreadCount > 0 ? unreadCount : ''}</span>
+          </Link>
+        ) : null}
+      </div>
       {loading ? <div>Loading...</div> : null}
       {!loading && !user ? (
-        <div style={{ display: 'grid', gap: 12 }}>
-          <div>You are not logged in.</div>
-          <Link href="/login">Go to Login</Link>
+        <div className="card">
+          <div className="cardBody stack">
+            <div className="muted">You are not logged in.</div>
+            <Link href="/login" className="btn btnPrimary" style={{ width: 160 }}>
+              Go to Login
+            </Link>
+          </div>
         </div>
       ) : null}
       {!loading && user ? (
-        <div style={{ display: 'grid', gap: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12 }}>
-            <div>
-              Logged in as <strong>{user.email}</strong>
+        <div className="stack">
+          <div className="card">
+            <div className="cardBody rowBetween">
+              <div>
+                Logged in as <strong>{user.email}</strong>
+              </div>
+              <span className="badge">{user.role}</span>
             </div>
-            <Link href="/notifications" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <BellIcon />
-              <span>{unreadCount > 0 ? `(${unreadCount})` : ''}</span>
-            </Link>
           </div>
-          <Link href="/availability">My Availability</Link>
-          <Link href="/my/schedule">My Schedule</Link>
-          <Link href="/available-shifts">Available Shifts</Link>
-          <Link href="/settings/notifications">Notification Settings</Link>
-          <Link href="/settings/timezone">Timezone Settings</Link>
-          {user.role === 'admin' || user.role === 'manager' ? <Link href="/manager/schedule">Manager Schedule</Link> : null}
-          {user.role === 'admin' || user.role === 'manager' ? <Link href="/manager/approvals">Manager Approvals</Link> : null}
-          {user.role === 'admin' || user.role === 'manager' ? <Link href="/manager/analytics">Fairness Analytics</Link> : null}
-          {user.role === 'admin' ? <Link href="/admin/users">Admin: User Management</Link> : null}
-          {user.role === 'admin' ? <Link href="/admin/audit">Admin: Audit Export</Link> : null}
-          <button
-            onClick={logout}
-            style={{
-              width: 160,
-              padding: 10,
-              borderRadius: 8,
-              border: '1px solid #111',
-              background: '#fff',
-              cursor: 'pointer',
-            }}
-          >
-            Logout
-          </button>
+
+          <div className="card">
+            <div className="cardBody stack">
+              <div className="row" style={{ flexWrap: 'wrap' }}>
+                <Link href="/availability" className="btn">
+                  My Availability
+                </Link>
+                <Link href="/my/schedule" className="btn">
+                  My Schedule
+                </Link>
+                <Link href="/available-shifts" className="btn">
+                  Available Shifts
+                </Link>
+                <Link href="/settings/notifications" className="btn">
+                  Notification Settings
+                </Link>
+                <Link href="/settings/timezone" className="btn">
+                  Timezone Settings
+                </Link>
+              </div>
+
+              {(user.role === 'admin' || user.role === 'manager') && (
+                <div className="row" style={{ flexWrap: 'wrap' }}>
+                  <Link href="/manager/schedule" className="btn btnPrimary">
+                    Manager Schedule
+                  </Link>
+                  <Link href="/manager/approvals" className="btn">
+                    Manager Approvals
+                  </Link>
+                  <Link href="/manager/analytics" className="btn">
+                    Fairness Analytics
+                  </Link>
+                </div>
+              )}
+
+              {user.role === 'admin' ? (
+                <div className="row" style={{ flexWrap: 'wrap' }}>
+                  <Link href="/admin/users" className="btn">
+                    Admin: User Management
+                  </Link>
+                  <Link href="/admin/audit" className="btn">
+                    Admin: Audit Export
+                  </Link>
+                </div>
+              ) : null}
+
+              <button onClick={logout} className="btn" style={{ width: 160 }}>
+                Logout
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
     </div>

@@ -85,65 +85,63 @@ export default function NotificationsPage() {
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: '40px auto', padding: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
-        <h1 style={{ margin: 0 }}>Notifications</h1>
-        <Link href="/">Home</Link>
+    <div className="container" style={{ maxWidth: 960 }}>
+      <div className="rowBetween">
+        <h1 className="pageTitle" style={{ margin: 0 }}>
+          Notifications
+        </h1>
+        <Link href="/" className="btn">
+          Home
+        </Link>
       </div>
 
-      <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-        <div style={{ color: '#555' }}>{unreadCount} unread</div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button
-            onClick={load}
-            style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #111', background: '#fff', cursor: 'pointer' }}
-          >
+      <div className="rowBetween" style={{ marginTop: 12, alignItems: 'center' }}>
+        <div className="badge">{unreadCount} unread</div>
+        <div className="row">
+          <button onClick={load} className="btn">
             Refresh
           </button>
-          <button
-            onClick={markAllRead}
-            disabled={unreadCount === 0}
-            style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #111', background: '#111', color: '#fff', cursor: 'pointer' }}
-          >
+          <button onClick={markAllRead} disabled={unreadCount === 0} className="btn btnPrimary">
             Mark all read
           </button>
         </div>
       </div>
 
-      {error ? <div style={{ marginTop: 12, color: '#b00020' }}>{error}</div> : null}
-      {loading ? <div style={{ marginTop: 12 }}>Loading...</div> : null}
+      {error ? (
+        <div className="card" style={{ marginTop: 12, borderColor: 'color-mix(in srgb, var(--danger) 35%, var(--border))' }}>
+          <div className="cardBody" style={{ color: 'var(--danger)' }}>
+            {error}
+          </div>
+        </div>
+      ) : null}
+      {loading ? <div style={{ marginTop: 12 }} className="muted">Loading...</div> : null}
 
       {!loading ? (
-        <div style={{ marginTop: 16, display: 'grid', gap: 10 }}>
+        <div className="stack" style={{ marginTop: 16 }}>
           {rows.map((n) => (
             <div
               key={n.id}
-              style={{
-                padding: 12,
-                border: '1px solid #e5e5e5',
-                borderRadius: 12,
-                background: n.read ? '#fff' : '#f7fbff',
-              }}
+              className="card"
+              style={{ background: n.read ? 'var(--surface)' : 'color-mix(in srgb, var(--primary) 8%, var(--surface))' }}
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline' }}>
-                <div style={{ fontWeight: 700 }}>{n.type}</div>
-                <div style={{ color: '#666' }}>{new Date(n.createdAt).toLocaleString()}</div>
-              </div>
-              <div style={{ marginTop: 6, color: '#222' }}>{n.message}</div>
-              <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                <div style={{ color: '#666' }}>{n.read ? 'Read' : 'Unread'}</div>
-                {!n.read ? (
-                  <button
-                    onClick={() => markRead(n.id)}
-                    style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid #111', background: '#fff', cursor: 'pointer' }}
-                  >
-                    Mark read
-                  </button>
-                ) : null}
+              <div className="cardBody">
+                <div className="rowBetween">
+                  <div style={{ fontWeight: 800 }}>{n.type}</div>
+                  <div className="muted">{new Date(n.createdAt).toLocaleString()}</div>
+                </div>
+                <div style={{ marginTop: 6 }}>{n.message}</div>
+                <div className="rowBetween" style={{ marginTop: 10, alignItems: 'center' }}>
+                  <div className={`badge ${n.read ? '' : 'badgeSuccess'}`}>{n.read ? 'Read' : 'Unread'}</div>
+                  {!n.read ? (
+                    <button onClick={() => markRead(n.id)} className="btn btnSmall">
+                      Mark read
+                    </button>
+                  ) : null}
+                </div>
               </div>
             </div>
           ))}
-          {rows.length === 0 ? <div style={{ color: '#555' }}>No notifications.</div> : null}
+          {rows.length === 0 ? <div className="muted">No notifications.</div> : null}
         </div>
       ) : null}
     </div>

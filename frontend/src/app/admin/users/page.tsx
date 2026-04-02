@@ -101,145 +101,140 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1000, margin: '40px auto', padding: 16 }}>
+    <div className="container" style={{ maxWidth: 1100 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
-        <h1 style={{ margin: 0 }}>Admin — Users</h1>
+        <h1 className="pageTitle" style={{ margin: 0 }}>
+          Admin — Users
+        </h1>
         <div style={{ display: 'flex', gap: 12 }}>
-          <Link href="/admin/audit">Audit Export</Link>
-          <Link href="/">Home</Link>
+          <Link href="/admin/audit" className="btn">
+            Audit Export
+          </Link>
+          <Link href="/" className="btn">
+            Home
+          </Link>
         </div>
       </div>
 
-      {me ? <div style={{ marginTop: 8, color: '#555' }}>Signed in as {me.email}</div> : null}
+      {me ? (
+        <div style={{ marginTop: 10 }} className="row">
+          <span className="badge">Admin</span>
+          <span className="muted">Signed in as {me.email}</span>
+        </div>
+      ) : null}
 
-      <div style={{ marginTop: 20, padding: 12, border: '1px solid #e5e5e5', borderRadius: 12 }}>
-        <h2 style={{ margin: '0 0 10px 0' }}>Create User</h2>
-        <form onSubmit={onCreate} style={{ display: 'grid', gap: 10 }}>
-          <div style={{ display: 'grid', gap: 6 }}>
-            <label>Name</label>
+      <div className="card" style={{ marginTop: 20 }}>
+        <div className="cardBody">
+          <h2 style={{ margin: '0 0 10px 0' }}>Create User</h2>
+          <form onSubmit={onCreate} style={{ display: 'grid', gap: 10 }}>
+            <div style={{ display: 'grid', gap: 6 }}>
+              <label>Name</label>
+              <input value={createName} onChange={(e) => setCreateName(e.target.value)} className="input" />
+            </div>
+            <div style={{ display: 'grid', gap: 6 }}>
+              <label>Email</label>
+              <input value={createEmail} onChange={(e) => setCreateEmail(e.target.value)} type="email" required className="input" />
+            </div>
+            <div style={{ display: 'grid', gap: 6 }}>
+              <label>Password</label>
+              <input
+                value={createPassword}
+                onChange={(e) => setCreatePassword(e.target.value)}
+                type="password"
+                required
+                className="input"
+              />
+            </div>
+            <div style={{ display: 'grid', gap: 6 }}>
+              <label>Role</label>
+              <select value={createRole} onChange={(e) => setCreateRole(e.target.value as UserRole)} className="select">
+                <option value="staff">staff</option>
+                <option value="manager">manager</option>
+                <option value="admin">admin</option>
+              </select>
+            </div>
+            <button type="submit" disabled={creating} className="btn btnPrimary" style={{ width: 160 }}>
+              {creating ? 'Creating...' : 'Create'}
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 20 }}>
+        <div className="cardBody">
+          <h2 style={{ margin: '0 0 10px 0' }}>Users</h2>
+          <div className="row" style={{ flexWrap: 'wrap' }}>
             <input
-              value={createName}
-              onChange={(e) => setCreateName(e.target.value)}
-              style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
+              placeholder="Search name/email..."
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              className="input"
+              style={{ minWidth: 240, width: 280 }}
             />
-          </div>
-          <div style={{ display: 'grid', gap: 6 }}>
-            <label>Email</label>
-            <input
-              value={createEmail}
-              onChange={(e) => setCreateEmail(e.target.value)}
-              type="email"
-              required
-              style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
-            />
-          </div>
-          <div style={{ display: 'grid', gap: 6 }}>
-            <label>Password</label>
-            <input
-              value={createPassword}
-              onChange={(e) => setCreatePassword(e.target.value)}
-              type="password"
-              required
-              style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
-            />
-          </div>
-          <div style={{ display: 'grid', gap: 6 }}>
-            <label>Role</label>
-            <select
-              value={createRole}
-              onChange={(e) => setCreateRole(e.target.value as UserRole)}
-              style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
-            >
-              <option value="staff">staff</option>
-              <option value="manager">manager</option>
+            <select value={role} onChange={(e) => setRole(e.target.value as UserRole | '')} className="select" style={{ width: 180 }}>
+              <option value="">all roles</option>
               <option value="admin">admin</option>
+              <option value="manager">manager</option>
+              <option value="staff">staff</option>
             </select>
+            <button onClick={load} className="btn">
+              Refresh
+            </button>
           </div>
-          <button
-            type="submit"
-            disabled={creating}
-            style={{
-              width: 160,
-              padding: 10,
-              borderRadius: 8,
-              border: '1px solid #111',
-              background: '#111',
-              color: '#fff',
-              cursor: 'pointer',
-            }}
-          >
-            {creating ? 'Creating...' : 'Create'}
-          </button>
-        </form>
-      </div>
 
-      <div style={{ marginTop: 20, padding: 12, border: '1px solid #e5e5e5', borderRadius: 12 }}>
-        <h2 style={{ margin: '0 0 10px 0' }}>Users</h2>
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-          <input
-            placeholder="Search name/email..."
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc', minWidth: 240 }}
-          />
-          <select
-            value={role}
-            onChange={(e) => setRole(e.target.value as UserRole | '')}
-            style={{ padding: 10, borderRadius: 8, border: '1px solid #ccc' }}
-          >
-            <option value="">all roles</option>
-            <option value="admin">admin</option>
-            <option value="manager">manager</option>
-            <option value="staff">staff</option>
-          </select>
-          <button
-            onClick={load}
-            style={{
-              padding: '10px 12px',
-              borderRadius: 8,
-              border: '1px solid #111',
-              background: '#fff',
-              cursor: 'pointer',
-            }}
-          >
-            Refresh
-          </button>
-        </div>
+          {error ? <div style={{ marginTop: 12, color: 'var(--danger)' }}>{error}</div> : null}
+          {loading ? (
+            <div style={{ marginTop: 12 }} className="muted">
+              Loading...
+            </div>
+          ) : null}
 
-        {error ? <div style={{ marginTop: 12, color: '#b00020' }}>{error}</div> : null}
-        {loading ? <div style={{ marginTop: 12 }}>Loading...</div> : null}
-
-        {!loading ? (
-          <div style={{ marginTop: 12, overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #eee' }}>Email</th>
-                  <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #eee' }}>Name</th>
-                  <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #eee' }}>Role</th>
-                  <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid #eee' }}>Created</th>
-                  <th style={{ textAlign: 'right', padding: 8, borderBottom: '1px solid #eee' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map((u) => (
-                  <tr key={u.id}>
-                    <td style={{ padding: 8, borderBottom: '1px solid #f3f3f3' }}>{u.email}</td>
-                    <td style={{ padding: 8, borderBottom: '1px solid #f3f3f3' }}>{u.name || '-'}</td>
-                    <td style={{ padding: 8, borderBottom: '1px solid #f3f3f3' }}>{u.role}</td>
-                    <td style={{ padding: 8, borderBottom: '1px solid #f3f3f3' }}>
-                      {new Date(u.created_at).toLocaleString()}
-                    </td>
-                    <td style={{ padding: 8, borderBottom: '1px solid #f3f3f3', textAlign: 'right' }}>
-                      <Link href={`/admin/users/${u.id}`}>Manage</Link>
-                    </td>
+          {!loading ? (
+            <div style={{ marginTop: 12, overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid var(--border)' }}>Email</th>
+                    <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid var(--border)' }}>Name</th>
+                    <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid var(--border)' }}>Role</th>
+                    <th style={{ textAlign: 'left', padding: 8, borderBottom: '1px solid var(--border)' }}>Created</th>
+                    <th style={{ textAlign: 'right', padding: 8, borderBottom: '1px solid var(--border)' }}>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            {users.length === 0 ? <div style={{ marginTop: 10, color: '#555' }}>No users found.</div> : null}
-          </div>
-        ) : null}
+                </thead>
+                <tbody>
+                  {users.map((u) => (
+                    <tr key={u.id}>
+                      <td style={{ padding: 10, borderBottom: '1px solid color-mix(in srgb, var(--border) 70%, transparent)' }}>
+                        {u.email}
+                      </td>
+                      <td style={{ padding: 10, borderBottom: '1px solid color-mix(in srgb, var(--border) 70%, transparent)' }}>
+                        {u.name || '-'}
+                      </td>
+                      <td style={{ padding: 10, borderBottom: '1px solid color-mix(in srgb, var(--border) 70%, transparent)' }}>
+                        <span className="badge">{u.role}</span>
+                      </td>
+                      <td style={{ padding: 10, borderBottom: '1px solid color-mix(in srgb, var(--border) 70%, transparent)' }}>
+                        {new Date(u.created_at).toLocaleString()}
+                      </td>
+                      <td
+                        style={{
+                          padding: 10,
+                          borderBottom: '1px solid color-mix(in srgb, var(--border) 70%, transparent)',
+                          textAlign: 'right',
+                        }}
+                      >
+                        <Link href={`/admin/users/${u.id}`} className="btn btnSmall">
+                          Manage
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {users.length === 0 ? <div style={{ marginTop: 10 }} className="muted">No users found.</div> : null}
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   )
