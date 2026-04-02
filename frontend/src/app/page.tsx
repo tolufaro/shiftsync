@@ -119,16 +119,24 @@ export default function Home() {
 
           <div className="card">
             <div className="cardBody stack">
+              {user.role === 'staff' ? (
+                <div className="row" style={{ flexWrap: 'wrap' }}>
+                  <Link href="/availability" className="btn">
+                    My Availability
+                  </Link>
+                  <Link href="/my/schedule" className="btn">
+                    My Schedule
+                  </Link>
+                  <Link href="/my/swaps" className="btn">
+                    My Swaps
+                  </Link>
+                  <Link href="/available-shifts" className="btn">
+                    Available Shifts
+                  </Link>
+                </div>
+              ) : null}
+
               <div className="row" style={{ flexWrap: 'wrap' }}>
-                <Link href="/availability" className="btn">
-                  My Availability
-                </Link>
-                <Link href="/my/schedule" className="btn">
-                  My Schedule
-                </Link>
-                <Link href="/available-shifts" className="btn">
-                  Available Shifts
-                </Link>
                 <Link href="/settings/notifications" className="btn">
                   Notification Settings
                 </Link>

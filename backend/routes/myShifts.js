@@ -13,7 +13,7 @@ router.use(...requireRole(['staff']))
 function withinCutoff(startAt) {
   const start = startAt instanceof Date ? startAt : new Date(startAt)
   if (Number.isNaN(start.getTime())) return false
-  const cutoff = Date.now() + 48 * 60 * 60 * 1000
+  const cutoff = Date.now()
   return start.getTime() <= cutoff
 }
 
@@ -143,15 +143,18 @@ router.post('/:shiftId/claim', async (req, res) => {
     return
   }
 
-  const validation = await validateAssignment(staffId, shiftId, { pool })
-  if (!validation.valid) {
-    res.status(400).json({ error: 'constraint_violation', validation })
-    return
-  }
-
   await pool.query('begin')
   let assignmentId = null
   try {
+    await pool.query('select id from users where id = $1 for update', [staffId])
+
+    const validation = await validateAssignment(staffId, shiftId, { pool })
+    if (!validation.valid) {
+      await pool.query('rollback')
+      res.status(400).json({ error: 'constraint_violation', validation })
+      return
+    }
+
     const created = await pool.query(
       `
         insert into shift_assignments (shift_id, staff_id, assigned_by, status)

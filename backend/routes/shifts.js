@@ -12,11 +12,23 @@ const router = express.Router()
 
 router.use(...requireRole(['admin', 'manager']))
 
-function withinCutoff(startAtIso) {
+function getScheduleEditCutoffMs() {
+  const hours = process.env.SHIFT_EDIT_CUTOFF_HOURS ? Number(process.env.SHIFT_EDIT_CUTOFF_HOURS) : 48
+  if (!Number.isFinite(hours) || hours < 0) return 48 * 60 * 60 * 1000
+  return hours * 60 * 60 * 1000
+}
+
+function scheduleEditLocked(startAtIso) {
   const start = startAtIso instanceof Date ? startAtIso : new Date(startAtIso)
   if (Number.isNaN(start.getTime())) return false
-  const cutoff = Date.now() + 48 * 60 * 60 * 1000
+  const cutoff = Date.now() + getScheduleEditCutoffMs()
   return start.getTime() <= cutoff
+}
+
+function shiftStartedOrPast(startAtIso) {
+  const start = startAtIso instanceof Date ? startAtIso : new Date(startAtIso)
+  if (Number.isNaN(start.getTime())) return false
+  return start.getTime() <= Date.now()
 }
 
 function cleanString(v) {
@@ -438,6 +450,11 @@ router.patch('/:shiftId', async (req, res) => {
     }
   }
 
+  if (scheduleEditLocked(current.start_at)) {
+    res.status(409).json({ error: 'cutoff_reached' })
+    return
+  }
+
   const nextLocationId = req.body?.locationId !== undefined ? cleanString(req.body.locationId) : undefined
   const requiredSkillId = req.body?.requiredSkillId !== undefined ? cleanString(req.body.requiredSkillId) : undefined
   const status = req.body?.status !== undefined ? cleanString(req.body.status) : undefined
@@ -682,6 +699,11 @@ router.delete('/:shiftId', async (req, res) => {
     }
   }
 
+  if (scheduleEditLocked(current.start_at)) {
+    res.status(409).json({ error: 'cutoff_reached' })
+    return
+  }
+
   await notifyAssignedStaff(
     pool,
     shiftId,
@@ -738,7 +760,7 @@ router.patch('/:shiftId/status', async (req, res) => {
     }
   }
 
-  if (withinCutoff(current.start_at)) {
+  if (scheduleEditLocked(current.start_at)) {
     res.status(409).json({ error: 'cutoff_reached' })
     return
   }
@@ -953,7 +975,7 @@ router.post('/:shiftId/assign', async (req, res) => {
     }
   }
 
-  if (withinCutoff(shift.start_at)) {
+  if (shiftStartedOrPast(shift.start_at)) {
     res.status(409).json({ error: 'cutoff_reached' })
     return
   }
@@ -1016,6 +1038,128 @@ router.post('/:shiftId/assign', async (req, res) => {
   }
 
   res.status(201).json({ ok: true, assignmentId: result.assignmentId, warnings: result.warnings, overtime: result.overtime })
+})
+
+router.post('/:shiftId/assignments/:assignmentId/drop', async (req, res) => {
+  const pool = getPool()
+  const shiftId = req.params.shiftId
+  const assignmentId = req.params.assignmentId
+  let droppedStaffId = null
+  let previousStatus = null
+
+  const shiftResult = await pool.query('select id, location_id, start_at from shifts where id = $1 limit 1', [shiftId])
+  const shift = shiftResult.rows[0]
+  if (!shift) {
+    res.status(404).json({ error: 'not_found' })
+    return
+  }
+
+  if (req.user.role === 'manager') {
+    const ok = await ensureManagerLocationAccess(pool, req.user.id, shift.location_id)
+    if (!ok) {
+      res.status(403).json({ error: 'forbidden' })
+      return
+    }
+  }
+
+  if (shiftStartedOrPast(shift.start_at)) {
+    res.status(409).json({ error: 'cutoff_reached' })
+    return
+  }
+
+  await pool.query('begin')
+  try {
+    const assignmentResult = await pool.query(
+      `
+        select id, staff_id, status
+        from shift_assignments
+        where id = $1::uuid and shift_id = $2::uuid
+        limit 1
+        for update
+      `,
+      [assignmentId, shiftId],
+    )
+    const a = assignmentResult.rows[0]
+    if (!a) {
+      await pool.query('rollback')
+      res.status(404).json({ error: 'assignment_not_found' })
+      return
+    }
+
+    if (a.status === 'dropped') {
+      await pool.query('rollback')
+      res.json({ ok: true })
+      return
+    }
+
+    droppedStaffId = a.staff_id
+    previousStatus = a.status
+
+    await pool.query('update shift_assignments set status = $1::shift_assignment_status, assigned_by = $2 where id = $3', [
+      'dropped',
+      req.user.id,
+      assignmentId,
+    ])
+
+    await pool.query(
+      `
+        update swap_requests
+        set status = 'cancelled'::swap_request_status
+        where assignment_id = $1::uuid
+          and status in ('pending'::swap_request_status, 'pending_manager_approval'::swap_request_status)
+      `,
+      [assignmentId],
+    )
+
+    await logAudit(
+      req.user.id,
+      'shift.assignment.drop',
+      'shift_assignment',
+      assignmentId,
+      { status: previousStatus, staffId: droppedStaffId, shiftId },
+      { status: 'dropped', staffId: droppedStaffId, shiftId },
+      { pool },
+    )
+
+    await pool.query('commit')
+  } catch (e) {
+    await pool.query('rollback')
+    throw e
+  }
+
+  await createNotification(
+    droppedStaffId,
+    'assignment.dropped',
+    'You have been removed from a shift',
+    { shiftId, assignmentId },
+    { pool, realtime: req.app.locals.realtime },
+  )
+
+  const staffToNotify = await pool.query(
+    `
+      select u.id
+      from staff_locations sl
+      join users u on u.id = sl.staff_id
+      where sl.location_id = $1
+        and u.role = 'staff'::user_role
+        and u.id <> $2
+      limit 50
+    `,
+    [shift.location_id, droppedStaffId],
+  )
+  for (const r of staffToNotify.rows) {
+    await createNotification(
+      r.id,
+      'shift.open',
+      'An open shift is available',
+      { shiftId, locationId: shift.location_id },
+      { pool, realtime: req.app.locals.realtime },
+    )
+  }
+
+  req.app.locals.realtime?.emitToLocation(shift.location_id, 'schedule:updated', { locationId: shift.location_id, shiftId, reason: 'assignment.dropped' })
+
+  res.json({ ok: true })
 })
 
 module.exports = { shiftsRouter: router }

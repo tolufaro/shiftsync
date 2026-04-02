@@ -21,8 +21,7 @@ function isIsoDate(value) {
 function isShiftEditable(shiftStartAt) {
   const start = shiftStartAt instanceof Date ? shiftStartAt : new Date(shiftStartAt)
   if (Number.isNaN(start.getTime())) return false
-  const cutoff = Date.now() + 48 * 60 * 60 * 1000
-  return start.getTime() > cutoff
+  return start.getTime() > Date.now()
 }
 
 async function ensureManagerLocationAccess(pool, userId, locationId) {
@@ -51,7 +50,7 @@ async function getExpiresAt(pool, shiftId) {
   const shift = r.rows[0]
   if (!shift) return null
   const start = new Date(shift.start_at)
-  const expires = new Date(start.getTime() - 24 * 60 * 60 * 1000)
+  const expires = new Date(start.getTime() - 5 * 60 * 1000)
   return expires.toISOString()
 }
 
@@ -404,6 +403,162 @@ router.patch('/:swapId/respond', ...requireRole(['staff']), async (req, res) => 
   req.app.locals.realtime?.emitToLocation(swap.location_id, 'swap:updated', { swapId, status: nextStatus, shiftId: swap.shift_id })
 
   res.json({ ok: true, status: nextStatus })
+})
+
+router.post('/:swapId/cancel', ...requireRole(['staff']), async (req, res) => {
+  const pool = getPool()
+  const staffId = req.user.id
+  const swapId = req.params.swapId
+
+  const existing = await pool.query(
+    `
+      select
+        sr.id,
+        sr.status,
+        sr.type,
+        sr.requested_by,
+        sr.target_staff_id,
+        s.id as shift_id,
+        s.location_id,
+        s.start_at
+      from swap_requests sr
+      join shift_assignments sa on sa.id = sr.assignment_id
+      join shifts s on s.id = sa.shift_id
+      where sr.id = $1
+      limit 1
+    `,
+    [swapId],
+  )
+  const swap = existing.rows[0]
+  if (!swap) {
+    res.status(404).json({ error: 'not_found' })
+    return
+  }
+  if (swap.requested_by !== staffId) {
+    res.status(403).json({ error: 'forbidden' })
+    return
+  }
+  if (!['pending', 'pending_manager_approval'].includes(swap.status)) {
+    res.status(409).json({ error: 'not_cancellable' })
+    return
+  }
+  if (!isShiftEditable(swap.start_at)) {
+    res.status(409).json({ error: 'cutoff_reached' })
+    return
+  }
+
+  await pool.query('begin')
+  try {
+    await pool.query('update swap_requests set status = $1::swap_request_status where id = $2', ['cancelled', swapId])
+    await logAudit(staffId, 'swap.cancel.requestor', 'swap_request', swapId, { status: swap.status }, { status: 'cancelled' }, { pool })
+    await pool.query('commit')
+  } catch (e) {
+    await pool.query('rollback')
+    throw e
+  }
+
+  await createNotification(
+    staffId,
+    'swap.cancelled',
+    'Swap/drop request cancelled',
+    { swapRequestId: swapId },
+    { pool, realtime: req.app.locals.realtime },
+  )
+
+  if (swap.target_staff_id) {
+    await createNotification(
+      swap.target_staff_id,
+      'swap.cancelled',
+      'Swap request cancelled by requester',
+      { swapRequestId: swapId },
+      { pool, realtime: req.app.locals.realtime },
+    )
+  }
+
+  const managers = await pool.query(
+    `
+      select distinct u.id
+      from users u
+      left join staff_locations sl on sl.staff_id = u.id
+      where (u.role = 'admin'::user_role)
+         or (u.role = 'manager'::user_role and sl.location_id = $1)
+    `,
+    [swap.location_id],
+  )
+  for (const m of managers.rows) {
+    await createNotification(
+      m.id,
+      'swap.cancelled',
+      'Swap/drop request cancelled',
+      { swapRequestId: swapId, shiftId: swap.shift_id, locationId: swap.location_id },
+      { pool, realtime: req.app.locals.realtime },
+    )
+  }
+
+  req.app.locals.realtime?.emitToUser(staffId, 'swap:cancelled', { swapId, status: 'cancelled', shiftId: swap.shift_id })
+  if (swap.target_staff_id) {
+    req.app.locals.realtime?.emitToUser(swap.target_staff_id, 'swap:cancelled', { swapId, status: 'cancelled', shiftId: swap.shift_id })
+  }
+  req.app.locals.realtime?.emitToLocation(swap.location_id, 'swap:updated', { swapId, status: 'cancelled', shiftId: swap.shift_id })
+
+  res.json({ ok: true, status: 'cancelled' })
+})
+
+router.get('/mine', ...requireRole(['staff']), async (req, res) => {
+  const pool = getPool()
+  const staffId = req.user.id
+
+  const result = await pool.query(
+    `
+      select
+        sr.id,
+        sr.type,
+        sr.status,
+        sr.expires_at,
+        sr.created_at,
+        sr.requested_by,
+        u1.email as requested_by_email,
+        u1.name as requested_by_name,
+        sr.target_staff_id,
+        u2.email as target_staff_email,
+        u2.name as target_staff_name,
+        s.id as shift_id,
+        s.start_at,
+        s.end_at,
+        s.location_id,
+        l.name as location_name,
+        l.timezone as location_timezone
+      from swap_requests sr
+      join shift_assignments sa on sa.id = sr.assignment_id
+      join shifts s on s.id = sa.shift_id
+      join locations l on l.id = s.location_id
+      left join users u1 on u1.id = sr.requested_by
+      left join users u2 on u2.id = sr.target_staff_id
+      where sr.requested_by = $1
+         or sr.target_staff_id = $1
+      order by sr.created_at desc
+      limit 200
+    `,
+    [staffId],
+  )
+
+  res.json({
+    swaps: result.rows.map((r) => ({
+      id: r.id,
+      type: r.type,
+      status: r.status,
+      expiresAt: r.expires_at ? new Date(r.expires_at).toISOString() : null,
+      createdAt: r.created_at,
+      requestedBy: { id: r.requested_by, email: r.requested_by_email, name: r.requested_by_name },
+      targetStaff: r.target_staff_id ? { id: r.target_staff_id, email: r.target_staff_email, name: r.target_staff_name } : null,
+      shift: {
+        id: r.shift_id,
+        startAt: new Date(r.start_at).toISOString(),
+        endAt: new Date(r.end_at).toISOString(),
+        location: { id: r.location_id, name: r.location_name, timezone: r.location_timezone },
+      },
+    })),
+  })
 })
 
 router.get('/pending', ...requireRole(['admin', 'manager']), async (req, res) => {

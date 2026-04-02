@@ -1,13 +1,13 @@
 const express = require('express')
 
 const { getPool } = require('../db')
-const { requireUser } = require('../middleware/rbac')
+const { requireRole } = require('../middleware/rbac')
 const { createNotification } = require('../services/notifications')
 const { logAudit } = require('../services/audit')
 
 const router = express.Router()
 
-router.use(...requireUser())
+router.use(...requireRole(['staff']))
 
 function normalizeTime(value) {
   if (!value) return null

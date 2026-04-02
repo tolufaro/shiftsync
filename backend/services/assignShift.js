@@ -13,6 +13,8 @@ async function assignStaffToShift(params, options = {}) {
   try {
     await client.query('begin')
 
+    await client.query('select id from users where id = $1 for update', [staffId])
+
     const shiftResult = await client.query(
       `
         select id, location_id, start_at, headcount_needed, status

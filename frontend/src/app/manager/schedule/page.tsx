@@ -338,6 +338,18 @@ export default function ManagerSchedulePage() {
     setAssignFeedback((prev) => ({ ...prev, [shiftId]: { ok: false, message, validation, alternatives } }))
   }
 
+  async function dropAssignment(shiftId: string, assignmentId: string) {
+    const ok = window.confirm('Remove this staff member from the shift?')
+    if (!ok) return
+    setError(null)
+    try {
+      await fetchJson(`/shifts/${shiftId}/assignments/${assignmentId}/drop`, { method: 'POST' })
+      await loadSchedule()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Remove failed')
+    }
+  }
+
   async function submitOverride() {
     if (!overrideOpen) return
     if (!overrideReason.trim()) return
@@ -540,8 +552,17 @@ export default function ManagerSchedulePage() {
                           {s.assignments.length ? (
                             <div style={{ display: 'grid', gap: 4 }}>
                               {s.assignments.map((a) => (
-                                <div key={a.assignmentId} style={{ color: '#222' }}>
-                                  {(a.name || a.email) + (a.status !== 'active' ? ` (${a.status})` : '')}
+                                <div key={a.assignmentId} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                                  <div style={{ color: '#222' }}>{(a.name || a.email) + (a.status !== 'active' ? ` (${a.status})` : '')}</div>
+                                  {a.status === 'active' ? (
+                                    <button
+                                      onClick={() => dropAssignment(s.id, a.assignmentId)}
+                                      className="btn btnSmall"
+                                      style={{ borderColor: 'color-mix(in srgb, var(--danger) 35%, var(--border))', color: 'var(--danger)' }}
+                                    >
+                                      Remove
+                                    </button>
+                                  ) : null}
                                 </div>
                               ))}
                             </div>

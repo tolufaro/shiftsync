@@ -1,4 +1,4 @@
-# ShiftSync — Documentation
+# ShiftSync Documentation
 
 ## Demo Login Credentials
 
@@ -106,6 +106,7 @@ npm run dev
 - `/availability` — Weekly availability + exceptions
 - `/my/schedule` — Staff schedule
 - `/available-shifts` — Staff “open shifts” list + claim
+- `/my/swaps` — Staff swap/drop requests + cancel/respond
 - `/manager/schedule` — Manager schedule grid + assignment + history panel
 - `/manager/approvals` — Swap/drop approvals
 - `/manager/analytics` — Fairness analytics
@@ -136,6 +137,9 @@ npm run dev
 
 - **Assignment concurrency**: assignment creation locks the shift row (`SELECT ... FOR UPDATE`) and checks headcount inside the transaction. When headcount is already met, it returns `headcount_full`.
 - **Overtime / rest / double-booking**: the validator returns blocking vs warning violations. Manager override is required for overrideable blocks (e.g., 7th consecutive day), and the UI prompts for an override reason.
+- **Edit cutoff**: schedule publish/unpublish and shift edits/deletes are blocked within `SHIFT_EDIT_CUTOFF_HOURS` of the shift start (default: 48 hours).
+- **Last-minute coverage**: assignment changes can be made up until the shift start time; swap/drop requests expire 24 hours before the shift.
+  - Managers can remove a staff member from a shift from the manager schedule UI, which marks the assignment as dropped and notifies certified staff at that location about the open shift.
 
 ### Notifications
 
@@ -162,6 +166,9 @@ These items were deliberately unspecified; the system’s current behavior is:
 - **Shift edited around swap approval**
   - If a shift is edited while a swap/drop request is still pending, the pending request is cancelled to avoid approving a stale swap against changed shift details.
   - If the swap has already been manager-approved, the assignment change is immediate; later shift edits just affect whoever is now assigned.
+- **Regret swap (requester cancels)**
+  - The requester can cancel a pending swap/drop request before it is manager-approved; it becomes `cancelled` and notifies the target staff (if any) and managers for that location.
 - **Locations near timezone boundaries**
-  - Each location uses a single IANA timezone (`locations.timezone`). Boundary-spanning locations are not modeled; the operator must choose the canonical timezone for that location.
+  - Each location uses a single IANA timezone (`locations.timezone`). Boundary-spanning locations are not modeled.
+  - Recommended operational approach: represent the “two sides” as two separate locations (e.g., `Coastal Eats — State Line (East)` and `Coastal Eats — State Line (West)`) so each has the correct timezone.
 
